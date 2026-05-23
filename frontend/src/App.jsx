@@ -45,6 +45,7 @@ const MyEntries = lazy(() => import("./pages/MyEntries"));
 const SubmitEntry = lazy(() => import("./pages/SubmitEntry"));
 const AdminReview = lazy(() => import("./pages/AdminReview"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const ArchiveCleanup = lazy(() => import("./pages/ArchiveCleanup"));
 const ManageAccounts = lazy(() => import("./pages/ManageAccounts"));
 const AddNewAccount = lazy(() => import("./pages/AddNewAccount"));
 const ManageTemplate = lazy(() => import("./pages/ManageTemplate"));
@@ -749,6 +750,12 @@ async function loadTemplate() {
     setEntries((prev) => prev.filter((entry) => entry.id !== entryId));
   };
 
+  const handleCleanupYear = (planningYear) => {
+    setEntries((prev) =>
+      prev.filter((entry) => String(entry.planningYear || "") !== String(planningYear)),
+    );
+  };
+
   const handleUpdateSubmissionWindow = async (updater) => {
     if (!submissionWindow) return;
     const newWindow = updater(submissionWindow);
@@ -880,6 +887,7 @@ async function loadTemplate() {
       return [
         { to: "/admin/dashboard", label: "Dashboard", icon: "dashboard" },
         { to: "/admin/review", label: "Admin Review", icon: "review" },
+        { to: "/admin/archive-cleanup", label: "Archive & Cleanup", icon: "archive" },
         { to: "/admin/manage-template", label: "Manage Template", icon: "template" },
         {
           label: "Manage Accounts",
@@ -976,6 +984,7 @@ async function loadTemplate() {
           <Route path="/submit" element={canUseEncoderView ? <SubmitEntry onAddEntry={handleAddEntry} entryToEdit={entryBeingEdited} onSaveEditedEntry={handleSaveEditedEntry} clearEditingEntry={clearEditingEntry} onStartNewEntry={handleStartNewEntry} submissionWindow={submissionWindow} draftState={submitEntryDraft} onDraftChange={setSubmitEntryDraft} onClearDraft={clearSubmitEntryDraft} currentUser={authUser} onShowToast={showToast} templateData={templateData} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/manage-template" element={canUseAdminView ? <ManageTemplate templateData={templateData} defaultTemplateData={templateDefaultData} onUpdateTemplateData={(nextTemplateData) => setTemplateData(normalizeTemplateSnapshot(nextTemplateData))} onResetTemplate={(nextTemplateData) => setTemplateData(normalizeTemplateSnapshot(nextTemplateData || templateDefaultData))} onSetDefaultTemplate={handleSetTemplateDefault} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/dashboard" element={canUseAdminView ? <AdminDashboard entries={entries} submissionWindow={submissionWindow} onUpdateSubmissionWindow={handleUpdateSubmissionWindow} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
+          <Route path="/admin/archive-cleanup" element={canUseAdminView ? <ArchiveCleanup entries={entries} onCleanupYear={handleCleanupYear} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/review" element={canUseAdminView ? <AdminReview entries={entries} currentUser={authUser} onReplaceEntry={handleReplaceEntry} onRemoveEntry={handleRemoveEntry} onUpdateEntry={handleUpdateEntry} onDeleteEntry={handleDeleteEntry} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/manage-accounts" element={canUseAdminView ? <ManageAccounts accounts={accounts} onUpdateAccount={handleUpdateAccount} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/manage-accounts/new" element={canUseAdminView ? <AddNewAccount accounts={accounts} onAddAccount={handleAddAccount} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />

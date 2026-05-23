@@ -33,6 +33,47 @@ const MONTH_NAMES = {
   dec: 'December'
 };
 
+const YEARLY_BACKUP_STATUS_SECTIONS = [
+  { label: 'Approved', statuses: ['approved'] },
+  { label: 'Pending Review', statuses: ['pending review', 'pending'] },
+  { label: 'Returned', statuses: ['returned', 'return'] },
+  { label: 'Rejected', statuses: ['rejected'] },
+];
+
+function normalizeMonthKey(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return MONTHS_LIST.find((month) => {
+    const fullName = MONTH_NAMES[month].toLowerCase();
+    return normalized === month || normalized === fullName || normalized.slice(0, 3) === month;
+  });
+}
+
+function getEntryMonthBreakdown(entry, monthKey) {
+  const monthlyRows = Array.isArray(entry.monthlyBreakdown)
+    ? entry.monthlyBreakdown
+    : [];
+
+  return monthlyRows.find((row) => normalizeMonthKey(row.month) === monthKey) || {};
+}
+
+function formatDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();
+}
+
+function escapeCSVValue(value) {
+  const stringValue = String(value ?? '');
+  if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+}
+
+function getStatusKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 // CSV Export Service
 export const csvExportService = {
   /**
@@ -147,6 +188,83 @@ export const csvExportService = {
     }));
   },
 
+  transformEntriesForYearlyBackup(entries, year) {
+    return entries.map((entry) => {
+      const monthlyColumns = MONTHS_LIST.reduce((acc, monthKey) => {
+        const monthName = this.getMonthName(monthKey);
+        const breakdown = getEntryMonthBreakdown(entry, monthKey);
+
+        acc[monthName] = Number(breakdown.amount || 0);
+
+        return acc;
+      }, {});
+
+      return {
+        'Archive Year': year,
+        'Entry ID': entry.id || '',
+        'Owner Full Name': entry.ownerFullName || entry.ownerDisplayName || '',
+        'Reviewer Full Name': entry.reviewerFullName || entry.reviewerDisplayName || '',
+        'Unit': entry.unit || '',
+        'Component': entry.component || '',
+        'Sub Component': entry.subComponent || '',
+        'Key Activity': entry.keyActivity || '',
+        'Activity No.': entry.no || '',
+        'Performance Indicator': entry.performanceIndicator || '',
+        'Sub Activity': entry.subActivity || '',
+        'Title of Activities': entry.titleOfActivities || '',
+        ...monthlyColumns,
+        'Grand Total': Number(entry.grandTotal || 0),
+      };
+    });
+  },
+
+  convertYearlyBackupToCSV(entries, year) {
+    const generatedAt = new Date();
+    const headers = Object.keys(
+      this.transformEntriesForYearlyBackup([entries[0]], year)[0],
+    );
+    const rows = [
+      ['AWPB Yearly CSV Backup'],
+      ['Planning Year', year],
+      ['Generated At', formatDateTime(generatedAt)],
+      [],
+    ];
+
+    const usedEntries = new Set();
+
+    YEARLY_BACKUP_STATUS_SECTIONS.forEach((section) => {
+      const sectionEntries = entries.filter((entry) =>
+        section.statuses.includes(getStatusKey(entry.status)),
+      );
+
+      sectionEntries.forEach((entry) => usedEntries.add(entry));
+
+      rows.push([section.label]);
+      rows.push(headers);
+
+      if (sectionEntries.length === 0) {
+        rows.push(['No entries']);
+      } else {
+        this.transformEntriesForYearlyBackup(sectionEntries, year).forEach((row) => {
+          rows.push(headers.map((header) => row[header]));
+        });
+      }
+
+      rows.push([]);
+    });
+
+    const otherEntries = entries.filter((entry) => !usedEntries.has(entry));
+    if (otherEntries.length > 0) {
+      rows.push(['Other Status']);
+      rows.push(headers);
+      this.transformEntriesForYearlyBackup(otherEntries, year).forEach((row) => {
+        rows.push(headers.map((header) => row[header]));
+      });
+    }
+
+    return rows.map((row) => row.map(escapeCSVValue).join(',')).join('\n');
+  },
+
   calculateTotalsRow(entries) {
     const monthlyTotals = {};
     let totalGrandTotal = 0;
@@ -195,12 +313,7 @@ export const csvExportService = {
     // Add data rows
     data.forEach(row => {
       const values = headers.map(header => {
-        const value = row[header];
-        // Escape quotes and wrap in quotes if contains comma, quote, or newline
-        if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
-          return `"${value.replace(/"/g, '""')}"`;
-        }
-        return value;
+        return escapeCSVValue(row[header]);
       });
       csvRows.push(values.join(','));
     });
@@ -216,6 +329,12 @@ export const csvExportService = {
     const now = new Date();
     const timestamp = now.toISOString().split('T')[0]; // YYYY-MM-DD format
     return `approved_entries_export_${timestamp}.csv`;
+  },
+
+  generateYearlyBackupFilename(year) {
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    return `awpb_yearly_backup_${year}_${timestamp}.csv`;
   },
 
   /**
@@ -276,5 +395,25 @@ export const csvExportService = {
       console.error('Error exporting approved entries to CSV:', error);
       throw error;
     }
+  },
+
+  exportYearlyEntriesBackupToCSV(entries, year) {
+    const archiveEntries = (entries || []).filter(
+      (entry) => String(entry.planningYear || '') === String(year),
+    );
+
+    if (archiveEntries.length === 0) {
+      throw new Error(`No entries found for planning year ${year}`);
+    }
+
+    const csvContent = this.convertYearlyBackupToCSV(archiveEntries, year);
+    const filename = this.generateYearlyBackupFilename(year);
+
+    this.downloadCSV(csvContent, filename);
+
+    return {
+      filename,
+      recordCount: archiveEntries.length,
+    };
   }
 };

@@ -512,8 +512,8 @@ export default function SubmitEntry({
     defaultValues: defaultFormValues,
   });
 
-  const planningYears = Array.from({ length: 5 }, (_, index) =>
-    String(CURRENT_YEAR + index),
+  const planningYears = Array.from({ length: 6 }, (_, index) =>
+    String(CURRENT_YEAR - 1 + index),
   );
   const isEditingReturnedEntry =
     entryToEdit && entryToEdit.status === "Returned";

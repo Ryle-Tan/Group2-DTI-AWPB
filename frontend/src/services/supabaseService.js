@@ -237,6 +237,17 @@ export const usersService = {
     return data;
   },
 
+  async getAccountLogs(limit = 100) {
+    const { data, error } = await supabase
+      .from('account_activity_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data || [];
+  },
+
   async create(userData) {
     const passwordError = getPasswordPolicyError(userData.password, { required: true });
     if (passwordError) throw new Error(passwordError);
@@ -261,14 +272,21 @@ export const usersService = {
   },
 
   async update(userId, updates) {
-    const { data, error } = await supabase
+    const { data: currentProfile, error: fetchError } = await supabase
       .from('profiles')
-      .update(updates)
+      .select('username, full_name, email, role, status')
       .eq('id', userId)
-      .select()
       .single();
-    if (error) throw error;
-    return data;
+
+    if (fetchError) throw fetchError;
+
+    return this.updateAccount(userId, {
+      username: updates.username ?? currentProfile.username,
+      fullName: updates.full_name ?? currentProfile.full_name,
+      email: updates.email ?? currentProfile.email,
+      role: updates.role ?? currentProfile.role,
+      status: updates.status ?? currentProfile.status,
+    });
   },
 
   async updateAccount(userId, userData) {
@@ -1752,6 +1770,67 @@ export const submissionService = {
       .eq('id', id)
       .select()
       .single();
+    if (error) throw error;
+    return data;
+  }
+};
+
+export const archiveBackupService = {
+  async getAll() {
+    const { data, error } = await supabase
+      .from('archive_backups')
+      .select('*')
+      .order('planning_year', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getEvents(limit = 100) {
+    const { data, error } = await supabase
+      .from('archive_backup_events')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async recordCsvBackup({ planningYear, filename, recordCount }) {
+    const { data, error } = await supabase.rpc('admin_record_csv_backup', {
+      p_planning_year: Number(planningYear),
+      p_filename: filename,
+      p_record_count: Number(recordCount || 0),
+    });
+
+    if (error) throw error;
+    return data;
+  },
+
+  async confirmDatabaseBackup({ planningYear, filename }) {
+    const { data, error } = await supabase.rpc('admin_confirm_database_backup', {
+      p_planning_year: Number(planningYear),
+      p_reference: filename,
+    });
+
+    if (error) throw error;
+    return data;
+  },
+
+  async markDatabaseBackupDone(args) {
+    return this.confirmDatabaseBackup(args);
+  },
+
+  async markSqlBackupDone(args) {
+    return this.confirmDatabaseBackup(args);
+  },
+
+  async cleanupYear(planningYear) {
+    const { data, error } = await supabase.rpc('admin_cleanup_archive_year', {
+      p_planning_year: Number(planningYear),
+    });
+
     if (error) throw error;
     return data;
   }

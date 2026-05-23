@@ -15,6 +15,7 @@ import {
   ChevronRight,
   SlidersHorizontal,
   ArrowLeftRight,
+  Archive,
 } from "lucide-react";
 
 const iconMap = {
@@ -22,6 +23,7 @@ const iconMap = {
   entries: FileText,
   submit: PlusCircle,
   review: ClipboardCheck,
+  archive: Archive,
   accounts: Users,
   addAccount: UserPlus,
   template: SlidersHorizontal,

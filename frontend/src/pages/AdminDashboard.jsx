@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  Archive,
   ArrowRight,
   CalendarRange,
   CheckCircle2,
@@ -268,6 +269,7 @@ export default function AdminDashboard({
   }, [yearEntries]);
 
   const maxUnitAmount = Math.max(...unitBudget.map((item) => item.amount), 1);
+  const isCurrentYear = String(activeYear) === currentYear;
 
   return (
     <div className="space-y-6">
@@ -420,6 +422,54 @@ export default function AdminDashboard({
                 </div>
               </div>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-0 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+        <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="rounded-2xl bg-[#e7f2f0] p-3 text-[#0b4f52]">
+              <Archive size={20} />
+            </div>
+
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Yearly CSV Backup
+                </h2>
+                <Badge
+                  variant="outline"
+                  className={
+                    isCurrentYear
+                      ? "border-amber-200 bg-amber-50 text-amber-700"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  }
+                >
+                  {isCurrentYear ? "Current year" : "Archive-ready"}
+                </Badge>
+              </div>
+              <p className="mt-1 text-sm text-slate-500">
+                Download all {activeYear} entries as a CSV archive before future
+                cleanup or deletion.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
+              <span className="font-semibold text-slate-900">{yearEntries.length}</span>{" "}
+              entr{yearEntries.length === 1 ? "y" : "ies"}
+            </div>
+            <Button
+              asChild
+              className="border-0 bg-gradient-to-r from-[#0b4f52] to-[#16747a] text-white shadow-[0_6px_16px_rgba(11,79,82,0.24)] transition-all duration-200 hover:from-[#083f42] hover:to-[#115f64] disabled:cursor-wait disabled:opacity-75"
+            >
+              <Link to="/admin/archive-cleanup">
+                Open Archive & Cleanup
+                <ArrowRight size={16} />
+              </Link>
+            </Button>
           </div>
         </CardContent>
       </Card>
