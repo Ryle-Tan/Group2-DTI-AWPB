@@ -17,7 +17,7 @@ Use this checklist before the final demo or deployment sign-off. Mark each item 
 
 | Result | Check | Notes |
 |--------|-------|-------|
-| | All Supabase migrations from `001` through `032` are applied in order | |
+| | All Supabase migrations from `001` through `034` are applied in order | |
 | | `VITE_SUPABASE_URL` is configured | |
 | | `VITE_SUPABASE_ANON_KEY` is configured | |
 | | `VITE_APP_URL` is configured for deployed password reset links | |

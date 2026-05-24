@@ -1373,7 +1373,7 @@ export default function SubmitEntry({
                       <input
                         type="text"
                         readOnly
-                        value="No data available"
+                        value={FALLBACK_VALUE}
                         className="w-full rounded-lg border bg-gray-50 px-3 py-2 text-sm text-gray-600 outline-none"
                       />
                     </>
@@ -1419,7 +1419,7 @@ export default function SubmitEntry({
                       <input
                         type="text"
                         readOnly
-                        value="No data available"
+                        value={FALLBACK_VALUE}
                         className="w-full rounded-lg border bg-gray-50 px-3 py-2 text-sm text-gray-600 outline-none"
                       />
                     </>
@@ -1462,7 +1462,7 @@ export default function SubmitEntry({
                       <input
                         type="text"
                         readOnly
-                        value="No data available"
+                        value={FALLBACK_VALUE}
                         className="w-full rounded-lg border bg-gray-50 px-3 py-2 text-sm text-gray-600 outline-none"
                       />
                     </>
@@ -1521,7 +1521,7 @@ export default function SubmitEntry({
                       <input
                         type="text"
                         readOnly
-                        value="No data available"
+                        value={FALLBACK_VALUE}
                         className="w-full rounded-lg border bg-gray-50 px-3 py-2 text-sm text-gray-600 outline-none"
                       />
                     </>
