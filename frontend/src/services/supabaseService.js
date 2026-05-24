@@ -823,7 +823,7 @@ export const entriesService = {
       const subComponentText = normalizeEntryClassificationText(updates.subComponent);
       dbUpdates.sub_component_text = subComponentText;
 
-      if (isBlankClassification(subComponentText)) {
+      if (isBlankClassification(subComponentText) && !updates.subComponentId && !updates.sub_component_id) {
         dbUpdates.sub_component_id = null;
         dbUpdates.key_activity_id = null;
         dbUpdates.sub_activity_id = null;
@@ -837,7 +837,7 @@ export const entriesService = {
       const keyActivityText = normalizeEntryClassificationText(updates.keyActivity);
       dbUpdates.key_activity_text = keyActivityText;
 
-      if (isBlankClassification(keyActivityText)) {
+      if (isBlankClassification(keyActivityText) && !updates.keyActivityId && !updates.key_activity_id) {
         dbUpdates.key_activity_id = null;
         dbUpdates.sub_activity_id = null;
         dbUpdates.no = 'N/A';
