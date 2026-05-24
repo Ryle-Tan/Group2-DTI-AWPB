@@ -786,8 +786,6 @@ export const csvExportService = {
 
   calculateTotalsRow(entries) {
     const monthlyTotals = {};
-    const formattedMonthlyTotals = {};
-
     let totalGrandTotal = 0;
 
     entries.forEach(entry => {
@@ -798,10 +796,6 @@ export const csvExportService = {
         monthlyTotals[month] += entry.monthlyBreakdown[month];
       });
       totalGrandTotal += entry.grandTotal;
-    });
-
-    Object.keys(monthlyTotals).forEach(month => {
-      formattedMonthlyTotals[this.getMonthName(month)] = this.formatCurrency(monthlyTotals[month]);
     });
 
     const totalsRow = {
@@ -816,8 +810,8 @@ export const csvExportService = {
       'Sub Activity': '',
       'Title of Activities': '',
       'Unit Cost': '',
-      ...formattedMonthlyTotals,
-      'Grand Total': this.formatCurrency(totalGrandTotal),
+      ...monthlyTotals,
+      'Grand Total': totalGrandTotal,
     };
 
     return totalsRow;
