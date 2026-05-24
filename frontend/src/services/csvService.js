@@ -561,6 +561,13 @@ export const csvExportService = {
     return MONTH_NAMES[monthCode?.toLowerCase()] || monthCode;
   },
 
+  formatCurrency(amount) {
+    return new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount || 0);
+  },
+
   /**
    * Transform entry data into CSV-compatible format
    * @param {Array} entries - Array of entry objects
@@ -679,6 +686,8 @@ export const csvExportService = {
   calculateTotalsRow(entries) {
     const monthlyTargetTotals = {};
     const monthlyTotals = {};
+    const formattedMonthlyTotals = {};
+
     let totalGrandTotal = 0;
 
     entries.forEach(entry => {
@@ -695,6 +704,10 @@ export const csvExportService = {
         monthlyTotals[month] += entry.monthlyBreakdown[month];
       });
       totalGrandTotal += entry.grandTotal;
+    });
+
+    Object.keys(monthlyTotals).forEach(month => {
+      formattedMonthlyTotals[this.getMonthName(month)] = this.formatCurrency(monthlyTotals[month]);
     });
 
     const totalsRow = {
