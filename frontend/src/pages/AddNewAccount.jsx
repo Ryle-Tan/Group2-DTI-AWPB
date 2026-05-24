@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
 
@@ -49,6 +50,8 @@ export default function AddNewAccount({
   const [errors, setErrors] = useState({});
 
   const [isSaving, setIsSaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
 
 
@@ -387,21 +390,25 @@ export default function AddNewAccount({
 
                 </label>
 
-                <Input
-
-                  name="password"
-
-                  type="password"
-
-                  value={form.password}
-
-                  onChange={handleFieldChange}
-
-                  placeholder="New password"
-
-                  className="h-11 rounded-xl border-slate-200 bg-white px-4"
-
-                />
+                <div className="relative">
+                  <Input
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    value={form.password}
+                    onChange={handleFieldChange}
+                    placeholder="New password"
+                    className="h-11 rounded-xl border-slate-200 bg-white px-4 pr-12"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                    title={showPassword ? "Hide password" : "Show password"}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
 
                 {errors.password && (
 
@@ -425,21 +432,25 @@ export default function AddNewAccount({
 
                 </label>
 
-                <Input
-
-                  name="confirmPassword"
-
-                  type="password"
-
-                  value={form.confirmPassword}
-
-                  onChange={handleFieldChange}
-
-                  placeholder="Confirm password"
-
-                  className="h-11 rounded-xl border-slate-200 bg-white px-4"
-
-                />
+                <div className="relative">
+                  <Input
+                    name="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={form.confirmPassword}
+                    onChange={handleFieldChange}
+                    placeholder="Confirm password"
+                    className="h-11 rounded-xl border-slate-200 bg-white px-4 pr-12"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                    title={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                    aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
 
                 {errors.confirmPassword && (
 

@@ -11,8 +11,14 @@ WHERE bt.entry_id = e.id
   AND bt.planning_year IS NULL;
 
 UPDATE public.budget_transactions
-SET planning_year = EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER
+SET planning_year = COALESCE(
+    EXTRACT(YEAR FROM created_at)::INTEGER,
+    EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER
+)
 WHERE planning_year IS NULL;
+
+ALTER TABLE IF EXISTS public.budget_transactions
+ALTER COLUMN planning_year SET NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_budget_transactions_planning_year_unit_created_at
 ON public.budget_transactions(planning_year, unit, created_at DESC);
