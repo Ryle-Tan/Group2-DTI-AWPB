@@ -214,8 +214,9 @@ export const autoExcelWorkbookService = {
             const wb = new ExcelJS.Workbook();
 
             // Setup worksheets
-            const wsDashboard = wb.addWorksheet('Dashboard');
             const wsData = wb.addWorksheet('Approved Entries');
+            const wsCharts = wb.addWorksheet('Charts');
+            wb.views = [{ activeTab: 0 }];
 
             // Structural Table Headers mapping to your updated schema
             const headers = [
@@ -322,7 +323,7 @@ export const autoExcelWorkbookService = {
                 column.width = maxLen < 12 ? 12 : maxLen + 3;
             });
 
-            // Generate and embed Canvas Charts to Dashboard Worksheet
+            // Generate and embed Canvas charts to the Charts worksheet
             const readableMonthsMap = {
                 'January': monthlyTotals[0] || 0, 'February': monthlyTotals[1] || 0, 'March': monthlyTotals[2] || 0,
                 'April': monthlyTotals[3] || 0, 'May': monthlyTotals[4] || 0, 'June': monthlyTotals[5] || 0,
@@ -337,7 +338,7 @@ export const autoExcelWorkbookService = {
                 extension: 'png',
             });
 
-            wsDashboard.addImage(monthlyImageId, {
+            wsCharts.addImage(monthlyImageId, {
                 tl: { col: 0, row: 0 },
                 ext: { width: 650, height: 450 } // Matches canvas dimension tweaks
             });
@@ -350,7 +351,7 @@ export const autoExcelWorkbookService = {
                 extension: 'png',
             });
 
-            wsDashboard.addImage(unitImageId, {
+            wsCharts.addImage(unitImageId, {
                 tl: { col: 0, row: 24 },
                 ext: { width: 800, height: 450 } // Matches canvas dimension tweaks
             });

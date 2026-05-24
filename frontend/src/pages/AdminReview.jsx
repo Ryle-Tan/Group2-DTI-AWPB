@@ -1012,8 +1012,8 @@ export default function AdminReview({
 
       <Card className="overflow-hidden border-0 shadow-[0_10px_24px_rgba(15,23,42,0.08)] gap-0 py-0">
         <CardHeader className="border-b bg-white px-6 pt-5 pb-4">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div>
+          <div className="flex flex-col gap-4 min-[1800px]:flex-row min-[1800px]:items-start min-[1800px]:justify-between">
+            <div className="min-[1800px]:basis-[26%] min-[1800px]:shrink-0">
               <CardTitle className="text-2xl">All Submitted Entries</CardTitle>
               <p className="mt-1 text-sm text-slate-500">
                 Search and filter {yearFilter} submissions for admin review.
@@ -1023,7 +1023,7 @@ export default function AdminReview({
               </p>
             </div>
 
-            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[280px_125px_115px_auto_auto_auto] xl:w-auto xl:justify-start">
+            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_125px_115px_auto_auto_auto_auto] xl:items-center min-[1800px]:w-[72%] min-[1800px]:grid-cols-[280px_125px_115px_auto_auto_auto_auto] min-[1800px]:justify-start">
               <div className="relative min-w-0">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
