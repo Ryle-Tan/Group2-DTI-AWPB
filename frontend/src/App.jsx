@@ -750,6 +750,15 @@ async function loadTemplate() {
     setEntries((prev) => prev.filter((entry) => entry.id !== entryId));
   };
 
+  const handleImportEntries = (importedEntries = []) => {
+    setEntries((prev) => {
+      const existingIds = new Set(prev.map((entry) => entry.id));
+      const nextEntries = importedEntries.filter((entry) => entry?.id && !existingIds.has(entry.id));
+
+      return [...nextEntries, ...prev];
+    });
+  };
+
   const handleCleanupYear = (planningYear) => {
     setEntries((prev) =>
       prev.filter((entry) => String(entry.planningYear || "") !== String(planningYear)),
@@ -989,7 +998,7 @@ async function loadTemplate() {
           <Route path="/admin/manage-template" element={canUseAdminView ? <ManageTemplate templateData={templateData} defaultTemplateData={templateDefaultData} onUpdateTemplateData={(nextTemplateData) => setTemplateData(normalizeTemplateSnapshot(nextTemplateData))} onResetTemplate={(nextTemplateData) => setTemplateData(normalizeTemplateSnapshot(nextTemplateData || templateDefaultData))} onSetDefaultTemplate={handleSetTemplateDefault} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/dashboard" element={canUseAdminView ? <AdminDashboard entries={entries} submissionWindow={submissionWindow} onUpdateSubmissionWindow={handleUpdateSubmissionWindow} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/archive-cleanup" element={canUseAdminView ? <ArchiveCleanup entries={entries} onCleanupYear={handleCleanupYear} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
-          <Route path="/admin/review" element={canUseAdminView ? <AdminReview entries={entries} currentUser={authUser} onReplaceEntry={handleReplaceEntry} onRemoveEntry={handleRemoveEntry} onUpdateEntry={handleUpdateEntry} onDeleteEntry={handleDeleteEntry} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
+          <Route path="/admin/review" element={canUseAdminView ? <AdminReview entries={entries} currentUser={authUser} onReplaceEntry={handleReplaceEntry} onRemoveEntry={handleRemoveEntry} onImportEntries={handleImportEntries} onUpdateEntry={handleUpdateEntry} onDeleteEntry={handleDeleteEntry} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/manage-accounts" element={canUseAdminView ? <ManageAccounts accounts={accounts} entries={entries} onUpdateAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/manage-accounts/new" element={canUseAdminView ? <AddNewAccount accounts={accounts} onAddAccount={handleAddAccount} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="*" element={<Navigate to={defaultAuthenticatedPath} replace />} />

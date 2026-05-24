@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { normalizeUnitCode } from '../lib/units';
+import { entriesService } from './supabaseService';
 
 // Utility functions for data formatting (reuse from existing components)
 
@@ -31,6 +32,21 @@ const MONTH_NAMES = {
   oct: 'October',
   nov: 'November',
   dec: 'December'
+};
+
+const MONTH_SHORT_NAMES = {
+  jan: 'Jan',
+  feb: 'Feb',
+  mar: 'Mar',
+  apr: 'Apr',
+  may: 'May',
+  jun: 'Jun',
+  jul: 'Jul',
+  aug: 'Aug',
+  sep: 'Sep',
+  oct: 'Oct',
+  nov: 'Nov',
+  dec: 'Dec',
 };
 
 const YEARLY_BACKUP_STATUS_SECTIONS = [
@@ -68,6 +84,251 @@ function escapeCSVValue(value) {
     return `"${stringValue.replace(/"/g, '""')}"`;
   }
   return stringValue;
+}
+
+function normalizeHeader(value) {
+  return String(value || '')
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ');
+}
+
+function normalizeText(value) {
+  return String(value ?? '').trim();
+}
+
+function parseNumber(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  const normalized = String(value)
+    .replace(/[,\s]/g, '')
+    .replace(/[^\d().-]/g, '')
+    .replace(/^\((.*)\)$/, '-$1');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseCSVRows(csvContent) {
+  const rows = [];
+  let row = [];
+  let value = '';
+  let insideQuotes = false;
+
+  for (let index = 0; index < csvContent.length; index += 1) {
+    const char = csvContent[index];
+    const nextChar = csvContent[index + 1];
+
+    if (char === '"') {
+      if (insideQuotes && nextChar === '"') {
+        value += '"';
+        index += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !insideQuotes) {
+      row.push(value);
+      value = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !insideQuotes) {
+      if (char === '\r' && nextChar === '\n') index += 1;
+      row.push(value);
+      rows.push(row);
+      row = [];
+      value = '';
+      continue;
+    }
+
+    value += char;
+  }
+
+  row.push(value);
+  rows.push(row);
+
+  return rows.filter((csvRow) =>
+    csvRow.some((cell) => normalizeText(cell) !== ''),
+  );
+}
+
+function hasRequiredEntryHeaders(headerRow) {
+  const headers = new Set(headerRow.map(normalizeHeader));
+  return (
+    (headers.has('planning year') || headers.has('archive year')) &&
+    headers.has('unit') &&
+    headers.has('component') &&
+    headers.has('title of activities')
+  );
+}
+
+function buildRowObject(headers, values, rowNumber, section = '') {
+  return headers.reduce(
+    (acc, header, index) => {
+      const normalizedHeader = normalizeHeader(header);
+      if (normalizedHeader) acc[normalizedHeader] = values[index] ?? '';
+      return acc;
+    },
+    { __rowNumber: rowNumber, __section: section },
+  );
+}
+
+function extractEntryRows(csvContent) {
+  const rows = parseCSVRows(csvContent);
+  const entryRows = [];
+  let headers = null;
+  let section = '';
+
+  rows.forEach((row, index) => {
+    const rowNumber = index + 1;
+    const trimmedCells = row.map(normalizeText);
+    const firstCell = trimmedCells[0] || '';
+
+    if (hasRequiredEntryHeaders(trimmedCells)) {
+      headers = trimmedCells;
+      return;
+    }
+
+    if (
+      trimmedCells.length === 1 &&
+      firstCell &&
+      !['no entries', 'awpb yearly csv backup'].includes(firstCell.toLowerCase())
+    ) {
+      section = firstCell;
+      return;
+    }
+
+    if (!headers || firstCell.toLowerCase() === 'no entries') return;
+
+    const rowObject = buildRowObject(headers, row, rowNumber, section);
+    const unit = normalizeText(rowObject.unit);
+    const title = normalizeText(rowObject['title of activities']);
+
+    if (!unit && !title) return;
+    if (unit.toLowerCase() === 'total') return;
+
+    entryRows.push(rowObject);
+  });
+
+  return entryRows;
+}
+
+function getCell(row, headerNames) {
+  for (const headerName of headerNames) {
+    const normalizedHeader = normalizeHeader(headerName);
+    if (Object.prototype.hasOwnProperty.call(row, normalizedHeader)) {
+      return row[normalizedHeader];
+    }
+  }
+  return '';
+}
+
+function getMonthValue(row, monthKey, suffixes = ['']) {
+  const fullName = MONTH_NAMES[monthKey];
+  const shortName = MONTH_SHORT_NAMES[monthKey];
+  const candidates = suffixes.flatMap((suffix) => {
+    const suffixText = suffix ? ` ${suffix}` : '';
+    return [
+      `${fullName}${suffixText}`,
+      `${shortName}${suffixText}`,
+      `${monthKey}${suffixText}`,
+    ];
+  });
+
+  return getCell(row, candidates);
+}
+
+function getImportedMonthlyBreakdown(row, unitCost) {
+  return MONTHS_LIST.map((monthKey) => {
+    const monthName = MONTH_NAMES[monthKey];
+    const targetValue = getMonthValue(row, monthKey, ['Target', 'Qty', 'Quantity']);
+    const amountValue = getMonthValue(row, monthKey);
+    const importedTarget = parseNumber(targetValue);
+    const importedAmount = parseNumber(amountValue);
+    const target =
+      importedTarget > 0
+        ? importedTarget
+        : unitCost > 0 && importedAmount > 0
+          ? importedAmount / unitCost
+          : 0;
+
+    return {
+      month: monthName,
+      target,
+      amount: target * unitCost,
+    };
+  });
+}
+
+function getImportedUnitCost(row) {
+  const unitCost = parseNumber(getCell(row, ['Unit Cost', 'Cost']));
+  if (unitCost > 0) return unitCost;
+
+  const grandTotal = parseNumber(getCell(row, ['Grand Total', 'Total']));
+  const totalTargets = MONTHS_LIST.reduce((sum, monthKey) => {
+    return sum + parseNumber(getMonthValue(row, monthKey, ['Target', 'Qty', 'Quantity']));
+  }, 0);
+
+  if (grandTotal > 0 && totalTargets > 0) return grandTotal / totalTargets;
+
+  const hasMonthlyAmounts = MONTHS_LIST.some(
+    (monthKey) => parseNumber(getMonthValue(row, monthKey)) > 0,
+  );
+
+  return hasMonthlyAmounts ? 1 : 0;
+}
+
+function transformImportedRowsToEntries(rows) {
+  return rows.map((row) => {
+    const unitCost = getImportedUnitCost(row);
+    const monthlyBreakdown = getImportedMonthlyBreakdown(row, unitCost);
+
+    return {
+      sourceRowNumber: row.__rowNumber,
+      planningYear:
+        normalizeText(getCell(row, ['Planning Year', 'Archive Year'])) ||
+        String(new Date().getFullYear()),
+      unit: normalizeUnitCode(getCell(row, ['Unit'])),
+      component: normalizeText(getCell(row, ['Component'])),
+      subComponent: normalizeText(getCell(row, ['Sub Component', 'Sub-Component'])),
+      keyActivity: normalizeText(getCell(row, ['Key Activity'])),
+      no: normalizeText(getCell(row, ['Activity No.', 'Activity No', 'No'])),
+      performanceIndicator: normalizeText(getCell(row, ['Performance Indicator'])),
+      subActivity: normalizeText(getCell(row, ['Sub Activity', 'Sub-Activity'])),
+      titleOfActivities: normalizeText(getCell(row, ['Title of Activities'])),
+      unitCost,
+      monthlyBreakdown,
+      grandTotal: monthlyBreakdown.reduce((sum, month) => sum + month.amount, 0),
+      status: 'Pending Review',
+      adminComment: '',
+      submittedAt: new Date().toISOString(),
+    };
+  });
+}
+
+function validateImportedEntries(entries) {
+  const errors = [];
+
+  entries.forEach((entry) => {
+    const rowLabel = `Row ${entry.sourceRowNumber}`;
+
+    if (!entry.planningYear) errors.push(`${rowLabel}: planning year is required.`);
+    if (!entry.unit) errors.push(`${rowLabel}: unit is required.`);
+    if (!entry.component) errors.push(`${rowLabel}: component is required.`);
+    if (!entry.titleOfActivities) {
+      errors.push(`${rowLabel}: title of activities is required.`);
+    }
+    if (entry.unitCost <= 0) {
+      errors.push(`${rowLabel}: unit cost or monthly amounts are required.`);
+    }
+    if (!entry.monthlyBreakdown.some((month) => Number(month.target || 0) > 0)) {
+      errors.push(`${rowLabel}: at least one monthly target or amount is required.`);
+    }
+  });
+
+  return errors;
 }
 
 function getStatusKey(value) {
@@ -129,6 +390,10 @@ export const csvExportService = {
 
       const entriesWithBreakdown = (data || []).map((row) => {
         const targets = targetsByEntryId[row.id] || {};
+        const monthlyTargets = MONTHS_LIST.reduce((acc, month) => {
+          acc[this.getMonthName(month)] = Number(targets[month] || 0);
+          return acc;
+        }, {});
         const monthlyBreakdown = MONTHS_LIST.reduce((acc, month) => {
           acc[this.getMonthName(month)] =
             Number(targets[month] || 0) * Number(row.unit_cost || 0);
@@ -153,7 +418,9 @@ export const csvExportService = {
             '',
           subActivity: row.sub_activities?.name || '',
           titleOfActivities: row.title_of_activities,
+          unitCost: Number(row.unit_cost || 0),
           planningYear: row.planning_year,
+          monthlyTargets,
           monthlyBreakdown,
           grandTotal,
         };
@@ -191,6 +458,12 @@ export const csvExportService = {
       'Performance Indicator': entry.performanceIndicator,
       'Sub Activity': entry.subActivity,
       'Title of Activities': entry.titleOfActivities,
+      'Unit Cost': entry.unitCost,
+      ...MONTHS_LIST.reduce((acc, monthKey) => {
+        const monthName = this.getMonthName(monthKey);
+        acc[`${monthName} Target`] = entry.monthlyTargets?.[monthName] ?? 0;
+        return acc;
+      }, {}),
       ...entry.monthlyBreakdown,
       'Grand Total': entry.grandTotal,
     }));
@@ -220,6 +493,15 @@ export const csvExportService = {
         'Performance Indicator': entry.performanceIndicator || '',
         'Sub Activity': entry.subActivity || '',
         'Title of Activities': entry.titleOfActivities || '',
+        'Unit Cost': Number(entry.unitCost || 0),
+        ...MONTHS_LIST.reduce((acc, monthKey) => {
+          const monthName = this.getMonthName(monthKey);
+          const breakdown = getEntryMonthBreakdown(entry, monthKey);
+
+          acc[`${monthName} Target`] = Number(breakdown.target || 0);
+
+          return acc;
+        }, {}),
         ...monthlyColumns,
         'Grand Total': Number(entry.grandTotal || 0),
       };
@@ -274,10 +556,17 @@ export const csvExportService = {
   },
 
   calculateTotalsRow(entries) {
+    const monthlyTargetTotals = {};
     const monthlyTotals = {};
     let totalGrandTotal = 0;
 
     entries.forEach(entry => {
+      Object.keys(entry.monthlyTargets || {}).forEach(month => {
+        if (!monthlyTargetTotals[month]) {
+          monthlyTargetTotals[month] = 0;
+        }
+        monthlyTargetTotals[month] += Number(entry.monthlyTargets[month] || 0);
+      });
       Object.keys(entry.monthlyBreakdown).forEach(month => {
         if (!monthlyTotals[month]) {
           monthlyTotals[month] = 0;
@@ -297,6 +586,12 @@ export const csvExportService = {
       'Performance Indicator': '',
       'Sub Activity': '',
       'Title of Activities': '',
+      'Unit Cost': '',
+      ...MONTHS_LIST.reduce((acc, monthKey) => {
+        const monthName = this.getMonthName(monthKey);
+        acc[`${monthName} Target`] = monthlyTargetTotals[monthName] || 0;
+        return acc;
+      }, {}),
       ...monthlyTotals,
       'Grand Total': totalGrandTotal,
     };
@@ -430,4 +725,53 @@ export const csvExportService = {
       recordCount: archiveEntries.length,
     };
   }
+};
+
+export const csvImportService = {
+  async importEntriesFromCSV(file) {
+    if (!file) throw new Error('Please choose a CSV file to import.');
+
+    const csvContent = await file.text();
+    const rows = extractEntryRows(csvContent);
+
+    if (rows.length === 0) {
+      throw new Error('No importable AWPB entry rows were found in the CSV file.');
+    }
+
+    const importedEntries = transformImportedRowsToEntries(rows);
+    const validationErrors = validateImportedEntries(importedEntries);
+
+    if (validationErrors.length > 0) {
+      throw new Error(validationErrors.slice(0, 3).join(' '));
+    }
+
+    const createdEntries = [];
+    const failedRows = [];
+
+    for (const entry of importedEntries) {
+      try {
+        const entryData = { ...entry };
+        delete entryData.sourceRowNumber;
+        const createdEntry = await entriesService.create(entryData);
+        createdEntries.push(createdEntry);
+      } catch (error) {
+        failedRows.push({
+          rowNumber: entry.sourceRowNumber,
+          message: error.message || 'Import failed.',
+        });
+      }
+    }
+
+    if (createdEntries.length === 0 && failedRows.length > 0) {
+      throw new Error(
+        `Import failed. Row ${failedRows[0].rowNumber}: ${failedRows[0].message}`,
+      );
+    }
+
+    return {
+      importedCount: createdEntries.length,
+      failedRows,
+      createdEntries,
+    };
+  },
 };

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Search, Eye, Trash2, History, Pencil } from "lucide-react";
+import { Search, Eye, Trash2, History, Pencil, Download, Upload } from "lucide-react";
 
 import AdminEntryReviewModal from "../components/admin/AdminEntryReviewModal";
 import AdminDeleteEntryModal from "../components/admin/AdminDeleteEntryModal";
@@ -94,6 +94,7 @@ export default function AdminReview({
   entries: entriesProp = [],
   onReplaceEntry,
   onRemoveEntry,
+  onImportEntries,
   onUpdateEntry,
   onDeleteEntry,
   onShowToast,
@@ -123,8 +124,10 @@ export default function AdminReview({
   const [reviewBusyAction, setReviewBusyAction] = useState("");
   const [pdfExportingEntryId, setPdfExportingEntryId] = useState(null);
   const [csvExporting, setCsvExporting] = useState(false);
+  const [csvImporting, setCsvImporting] = useState(false);
   const [deleteActionBusy, setDeleteActionBusy] = useState(false);
   const [unitAllocationSaving, setUnitAllocationSaving] = useState(false);
+  const csvImportInputRef = useRef(null);
 
   const entries = entriesProp;
   const currentAdminId = currentUser?.id || null;
@@ -385,6 +388,43 @@ export default function AdminReview({
       });
     } finally {
       setCsvExporting(false);
+    }
+  };
+
+  const handleImportCsvClick = () => {
+    if (csvImporting) return;
+    csvImportInputRef.current?.click();
+  };
+
+  const handleImportApprovedEntriesFromCSV = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || csvImporting) return;
+
+    setCsvImporting(true);
+    try {
+      const { csvImportService } = await import("../services/csvService");
+      const result = await csvImportService.importEntriesFromCSV(file);
+      onImportEntries?.(result.createdEntries);
+
+      const failedText =
+        result.failedRows.length > 0
+          ? ` ${result.failedRows.length} row${result.failedRows.length === 1 ? "" : "s"} could not be imported.`
+          : "";
+
+      onShowToast?.({
+        title: "CSV import successful",
+        description: `Imported ${result.importedCount} entr${result.importedCount === 1 ? "y" : "ies"} as Pending Review.${failedText}`,
+        type: result.failedRows.length > 0 ? "info" : "success",
+      });
+    } catch (error) {
+      onShowToast?.({
+        title: "CSV import failed",
+        description: error.message || "Could not import entries from the CSV file.",
+        type: "error",
+      });
+    } finally {
+      setCsvImporting(false);
     }
   };
   
@@ -907,7 +947,7 @@ export default function AdminReview({
               </p>
             </div>
 
-            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[280px_125px_115px_auto_auto] xl:w-auto xl:justify-start">
+            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[280px_125px_115px_auto_auto_auto] xl:w-auto xl:justify-start">
               <div className="relative min-w-0">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
@@ -953,8 +993,25 @@ export default function AdminReview({
                 disabled={csvExporting}
                 className={`whitespace-nowrap disabled:cursor-wait disabled:opacity-75 ${gradientButtonClass}`}
               >
+                <Download size={16} />
                 {csvExporting ? "Exporting CSV..." : `Export ${yearFilter} CSV`}
               </Button>
+              <Button
+                type="button"
+                onClick={handleImportCsvClick}
+                disabled={csvImporting}
+                className={`whitespace-nowrap disabled:cursor-wait disabled:opacity-75 ${gradientButtonClass}`}
+              >
+                <Upload size={16} />
+                {csvImporting ? "Importing CSV..." : "Import CSV"}
+              </Button>
+              <input
+                ref={csvImportInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={handleImportApprovedEntriesFromCSV}
+              />
             </div>
           </div>
         </CardHeader>
