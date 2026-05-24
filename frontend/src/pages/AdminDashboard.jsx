@@ -286,7 +286,10 @@ export default function AdminDashboard({
 
         <div className="flex flex-wrap gap-2">
           <Select value={activeYear} onValueChange={setSelectedYear}>
-            <SelectTrigger className="w-[140px] border-0 bg-white shadow-[0_3px_10px_rgba(15,23,42,0.08)]">
+            <SelectTrigger
+              aria-label="Select planning year"
+              className="w-[140px] border-0 bg-white shadow-[0_3px_10px_rgba(15,23,42,0.08)]"
+            >
               <SelectValue placeholder="Year" />
             </SelectTrigger>
             <SelectContent>
@@ -380,10 +383,14 @@ export default function AdminDashboard({
               <p className="text-sm font-semibold">Submission Period Settings</p>
               <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-medium">
+                  <label
+                    htmlFor="submission-window-start-date"
+                    className="mb-2 block text-sm font-medium"
+                  >
                     Start Date
                   </label>
                   <input
+                    id="submission-window-start-date"
                     type="date"
                     value={submissionWindow?.startDate || ""}
                     onChange={(e) =>
@@ -401,10 +408,14 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium">
+                  <label
+                    htmlFor="submission-window-end-date"
+                    className="mb-2 block text-sm font-medium"
+                  >
                     End Date
                   </label>
                   <input
+                    id="submission-window-end-date"
                     type="date"
                     value={submissionWindow?.endDate || ""}
                     onChange={(e) =>
