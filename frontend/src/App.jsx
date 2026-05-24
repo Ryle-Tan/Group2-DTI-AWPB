@@ -17,6 +17,7 @@ import {
 
 const INITIAL_ACCOUNTS = [];
 const ADMIN_VIEW_STORAGE_KEY = "awpb_admin_active_view";
+const ADMIN_PLANNING_YEAR_STORAGE_KEY = "awpb_admin_planning_year";
 const SESSION_EXPIRES_AT_STORAGE_KEY = "awpb_session_expires_at";
 const TEMPLATE_DEFAULT_STORAGE_KEY = "awpb_template_default_snapshot_2026_05_18_v3";
 const LEGACY_TEMPLATE_DEFAULT_STORAGE_KEYS = [
@@ -53,6 +54,15 @@ const ManageTemplate = lazy(() => import("./pages/ManageTemplate"));
 function getStoredAdminView() {
   const storedView = window.localStorage.getItem(ADMIN_VIEW_STORAGE_KEY);
   return storedView === "admin" || storedView === "encoder" ? storedView : null;
+}
+
+function getCurrentPlanningYear() {
+  return String(new Date().getFullYear());
+}
+
+function getStoredAdminPlanningYear() {
+  const storedYear = window.localStorage.getItem(ADMIN_PLANNING_YEAR_STORAGE_KEY);
+  return storedYear ? String(storedYear) : getCurrentPlanningYear();
 }
 
 function getDefaultAuthenticatedPath(role, activeView) {
@@ -266,6 +276,7 @@ function App() {
   const [authUser, setAuthUser] = useState(null);
   const [activeView, setActiveView] = useState(getStoredAdminView);
   const [authLoading, setAuthLoading] = useState(true);
+  const [adminPlanningYear, setAdminPlanningYear] = useState(getStoredAdminPlanningYear);
   const [isRecoveryMode, setIsRecoveryMode] = useState(
     () => window.location.pathname === '/confirm-password'
   );
@@ -276,6 +287,12 @@ function App() {
   const sessionExpiredRef = useRef(false);
   const authUserId = authUser?.id;
   const authUserRole = authUser?.role;
+
+  const handleAdminPlanningYearChange = useCallback((year) => {
+    const nextYear = String(year || getCurrentPlanningYear());
+    setAdminPlanningYear(nextYear);
+    window.localStorage.setItem(ADMIN_PLANNING_YEAR_STORAGE_KEY, nextYear);
+  }, []);
 
   const [submissionWindow, setSubmissionWindow] = useState({
     startDate: "2026-04-01",
@@ -996,9 +1013,9 @@ async function loadTemplate() {
           <Route path="/entries" element={canUseEncoderView ? <MyEntries entries={encoderEntries} onEditEntry={handleStartEdit} onDeleteEntry={handleDeleteEntry} onShowToast={showToast} submissionWindow={submissionWindow} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/submit" element={canUseEncoderView ? <SubmitEntry onAddEntry={handleAddEntry} entryToEdit={entryBeingEdited} onSaveEditedEntry={handleSaveEditedEntry} clearEditingEntry={clearEditingEntry} onStartNewEntry={handleStartNewEntry} submissionWindow={submissionWindow} draftState={submitEntryDraft} onDraftChange={setSubmitEntryDraft} onClearDraft={clearSubmitEntryDraft} currentUser={authUser} onShowToast={showToast} templateData={templateData} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/manage-template" element={canUseAdminView ? <ManageTemplate templateData={templateData} defaultTemplateData={templateDefaultData} onUpdateTemplateData={(nextTemplateData) => setTemplateData(normalizeTemplateSnapshot(nextTemplateData))} onResetTemplate={(nextTemplateData) => setTemplateData(normalizeTemplateSnapshot(nextTemplateData || templateDefaultData))} onSetDefaultTemplate={handleSetTemplateDefault} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
-          <Route path="/admin/dashboard" element={canUseAdminView ? <AdminDashboard entries={entries} submissionWindow={submissionWindow} onUpdateSubmissionWindow={handleUpdateSubmissionWindow} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
+          <Route path="/admin/dashboard" element={canUseAdminView ? <AdminDashboard entries={entries} selectedYear={adminPlanningYear} onSelectedYearChange={handleAdminPlanningYearChange} submissionWindow={submissionWindow} onUpdateSubmissionWindow={handleUpdateSubmissionWindow} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/archive-cleanup" element={canUseAdminView ? <ArchiveCleanup entries={entries} onCleanupYear={handleCleanupYear} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
-          <Route path="/admin/review" element={canUseAdminView ? <AdminReview entries={entries} currentUser={authUser} onReplaceEntry={handleReplaceEntry} onRemoveEntry={handleRemoveEntry} onImportEntries={handleImportEntries} onUpdateEntry={handleUpdateEntry} onDeleteEntry={handleDeleteEntry} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
+          <Route path="/admin/review" element={canUseAdminView ? <AdminReview entries={entries} currentUser={authUser} selectedYear={adminPlanningYear} onSelectedYearChange={handleAdminPlanningYearChange} onReplaceEntry={handleReplaceEntry} onRemoveEntry={handleRemoveEntry} onImportEntries={handleImportEntries} onUpdateEntry={handleUpdateEntry} onDeleteEntry={handleDeleteEntry} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/manage-accounts" element={canUseAdminView ? <ManageAccounts accounts={accounts} entries={entries} onUpdateAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/manage-accounts/new" element={canUseAdminView ? <AddNewAccount accounts={accounts} onAddAccount={handleAddAccount} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="*" element={<Navigate to={defaultAuthenticatedPath} replace />} />

@@ -117,6 +117,8 @@ const CURRENT_YEAR = String(new Date().getFullYear());
 export default function AdminReview({
   currentUser,
   entries: entriesProp = [],
+  selectedYear,
+  onSelectedYearChange,
   onReplaceEntry,
   onRemoveEntry,
   onImportEntries,
@@ -129,7 +131,7 @@ export default function AdminReview({
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [unitFilter, setUnitFilter] = useState("all");
-  const [yearFilter, setYearFilter] = useState(CURRENT_YEAR);
+  const yearFilter = String(selectedYear || CURRENT_YEAR);
   const [totalBudget, setTotalBudget] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [budgetDataStatus, setBudgetDataStatus] = useState("loading");
@@ -239,10 +241,11 @@ export default function AdminReview({
     return [
       ...new Set([
         CURRENT_YEAR,
+        yearFilter,
         ...entries.map((entry) => entry.planningYear).filter(Boolean).map(String),
       ]),
     ].sort((a, b) => Number(b) - Number(a) || String(b).localeCompare(String(a)));
-  }, [entries]);
+  }, [entries, yearFilter]);
 
   const entriesForSelectedYear = useMemo(() => {
     return entries.filter((entry) => String(entry.planningYear) === yearFilter);
@@ -829,7 +832,7 @@ export default function AdminReview({
               </div>
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <Select value={yearFilter} onValueChange={setYearFilter}>
+                <Select value={yearFilter} onValueChange={onSelectedYearChange}>
                   <SelectTrigger className="w-full min-w-[150px] border-white/35 bg-white/10 text-white shadow-sm sm:w-[150px]">
                     <SelectValue placeholder="Planning Year" />
                   </SelectTrigger>

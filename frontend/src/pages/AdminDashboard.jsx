@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
   Archive,
@@ -152,30 +152,26 @@ function StatCard({
 
 export default function AdminDashboard({
   entries = [],
+  selectedYear,
+  onSelectedYearChange,
   submissionWindow,
   onUpdateSubmissionWindow,
 }) {
   const windowOpen = isSubmissionWindowOpen(submissionWindow);
   const currentYear = String(new Date().getFullYear());
+  const activeYear = String(selectedYear || currentYear);
 
   const availableYears = useMemo(() => {
     const years = [
-      ...new Set(entries.map((entry) => String(entry.planningYear)).filter(Boolean)),
+      ...new Set([
+        currentYear,
+        activeYear,
+        ...entries.map((entry) => String(entry.planningYear)).filter(Boolean),
+      ]),
     ].sort((a, b) => String(b).localeCompare(String(a)));
 
-    if (years.length === 0) {
-      return [currentYear];
-    }
-
     return years;
-  }, [currentYear, entries]);
-
-  const [selectedYear, setSelectedYear] = useState(currentYear);
-  const activeYear = availableYears.includes(selectedYear)
-    ? selectedYear
-    : availableYears.includes(currentYear)
-      ? currentYear
-      : availableYears[0];
+  }, [activeYear, currentYear, entries]);
 
   const yearEntries = useMemo(() => {
     return entries.filter(
@@ -285,7 +281,7 @@ export default function AdminDashboard({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Select value={activeYear} onValueChange={setSelectedYear}>
+          <Select value={activeYear} onValueChange={onSelectedYearChange}>
             <SelectTrigger
               aria-label="Select planning year"
               className="w-[140px] border-0 bg-white shadow-[0_3px_10px_rgba(15,23,42,0.08)]"
