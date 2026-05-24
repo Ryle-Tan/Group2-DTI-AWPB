@@ -271,7 +271,7 @@ function formatPlanningBalance(value) {
   if (numericValue === 0) return "Balanced";
   if (numericValue > 0) return formatCurrency(numericValue);
 
-  return `+${formatCurrency(Math.abs(numericValue))} over estimate`;
+  return `${formatCurrency(Math.abs(numericValue))} over estimate`;
 }
 
 function formatTarget(value) {

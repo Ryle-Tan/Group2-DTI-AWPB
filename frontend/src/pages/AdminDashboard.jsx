@@ -13,7 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { UNIT_CODES, normalizeUnitCode } from "@/lib/units";
+import { calculateUnitBudget, isApprovedStatus } from "@/lib/budgetCalculations";
 import {
   Select,
   SelectContent,
@@ -36,8 +36,6 @@ const MONTHS = [
   { key: "Nov", label: "November" },
   { key: "Dec", label: "December" },
 ];
-
-const DEFAULT_UNITS = UNIT_CODES;
 
 function formatCurrency(value) {
   return new Intl.NumberFormat("en-PH", {
@@ -79,10 +77,6 @@ function isSubmissionWindowOpen(submissionWindow) {
   return today >= start && today <= end;
 }
 
-function isApprovedStatus(status) {
-  return String(status || "").trim().toLowerCase() === "approved";
-}
-
 function normalizeMonthLabel(value) {
   const normalized = String(value || "").trim().toLowerCase();
   return MONTHS.find(
@@ -91,15 +85,6 @@ function normalizeMonthLabel(value) {
       month.key.toLowerCase() === normalized ||
       month.key.toLowerCase() === normalized.slice(0, 3),
   )?.label;
-}
-
-function getEntryBudgetTotal(entry) {
-  const monthlyTotal = (entry.monthlyBreakdown || []).reduce(
-    (sum, item) => sum + Number(item.amount || 0),
-    0,
-  );
-
-  return monthlyTotal || Number(entry.grandTotal || 0);
 }
 
 function StatCard({
@@ -224,33 +209,7 @@ export default function AdminDashboard({
   }, [approvedMonthlyBudget]);
 
   const unitBudget = useMemo(() => {
-    const totalsByUnit = DEFAULT_UNITS.reduce((acc, unit) => {
-      acc[unit] = {
-        unit,
-        amount: 0,
-        entries: 0,
-      };
-      return acc;
-    }, {});
-
-    approvedEntries.forEach((entry) => {
-      const unitKey = normalizeUnitCode(entry.unit);
-
-      if (!totalsByUnit[unitKey]) {
-        totalsByUnit[unitKey] = {
-          unit: unitKey,
-          amount: 0,
-          entries: 0,
-        };
-      }
-
-      totalsByUnit[unitKey].amount += getEntryBudgetTotal(entry);
-      totalsByUnit[unitKey].entries += 1;
-    });
-
-    return Object.values(totalsByUnit).sort(
-      (a, b) => b.amount - a.amount || a.unit.localeCompare(b.unit),
-    );
+    return calculateUnitBudget(approvedEntries);
   }, [approvedEntries]);
 
   const pendingEntries = useMemo(() => {

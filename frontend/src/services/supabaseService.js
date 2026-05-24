@@ -896,9 +896,9 @@ export const entriesService = {
       }
     }
     
-    // Update monthly targets if provided
-    if (updates.monthlyBreakdown && updates.monthlyBreakdown.length > 0) {
-      // Delete existing targets
+    // Replace monthly targets whenever the caller provides a new breakdown,
+    // including the valid case where every month was cleared to zero.
+    if (updates.monthlyBreakdown !== undefined) {
       await supabase.from('monthly_targets').delete().eq('entry_id', id);
 
       const monthlyTargetRows = buildMonthlyTargetRows(id, updates.monthlyBreakdown);

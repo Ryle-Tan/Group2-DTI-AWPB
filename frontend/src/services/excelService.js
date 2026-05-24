@@ -1,5 +1,4 @@
-import ExcelJS from 'exceljs';
-import { csvExportService } from './csvService'; // Pulls from your CSV data pipeline
+import { csvExportService } from './csvService';
 import { calculateUnitBudget } from '../lib/budgetCalculations';
 
 export const autoExcelWorkbookService = {
@@ -21,6 +20,13 @@ export const autoExcelWorkbookService = {
         const labels = Object.keys(monthlyTotals);
         const data = Object.values(monthlyTotals);
         const total = data.reduce((sum, val) => sum + val, 0);
+
+        if (total <= 0) {
+            ctx.fillStyle = '#333333';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText('No approved monthly budget data available', 30, 60);
+            return canvas.toDataURL('image/png');
+        }
 
         const centerX = 220;
         const centerY = 225;
@@ -66,7 +72,7 @@ export const autoExcelWorkbookService = {
             startAngle += sliceAngle;
         });
 
-        // Render Professional Side Legend (Restored Text defaults)
+        // Render side legend.
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
         ctx.font = 'bold 14px Arial';
@@ -188,7 +194,6 @@ export const autoExcelWorkbookService = {
             ctx.fillStyle = '#555555';
             ctx.font = '12px Arial';
 
-            // FIXED: Swapped short compactDisplay format for the explicit, un-truncated string layout
             const formattedAmount = new Intl.NumberFormat('en-PH', {
                 style: 'currency',
                 currency: 'PHP',
@@ -204,6 +209,8 @@ export const autoExcelWorkbookService = {
 
     async exportWithDashboardChart(planningYear) {
         try {
+            const ExcelJSModule = await import('exceljs');
+            const ExcelJS = ExcelJSModule.default || ExcelJSModule;
             const entries = await csvExportService.fetchApprovedEntries(planningYear);
 
             if (!entries || entries.length === 0) {
@@ -218,7 +225,7 @@ export const autoExcelWorkbookService = {
             const wsCharts = wb.addWorksheet('Charts');
             wb.views = [{ activeTab: 0 }];
 
-            // Structural Table Headers mapping to your updated schema
+            // Structural table headers mapping to the current schema.
             const headers = [
                 { header: 'Planning Year', key: 'planningYear' },
                 { header: 'Status', key: 'status' },
@@ -264,7 +271,6 @@ export const autoExcelWorkbookService = {
                     titleOfActivities: entry.titleOfActivities,
                     unitCost: entry.unitCost,
 
-                    // Map values financial breakdown array cleanly
                     jan: monthBreakdowns[0] || 0, feb: monthBreakdowns[1] || 0, mar: monthBreakdowns[2] || 0,
                     apr: monthBreakdowns[3] || 0, may: monthBreakdowns[4] || 0, jun: monthBreakdowns[5] || 0,
                     jul: monthBreakdowns[6] || 0, aug: monthBreakdowns[7] || 0, sep: monthBreakdowns[8] || 0,
@@ -286,10 +292,10 @@ export const autoExcelWorkbookService = {
                 Object.keys(entry.monthlyBreakdown || {}).forEach((month, idx) => {
                     monthlyTotals[idx] = (monthlyTotals[idx] || 0) + entry.monthlyBreakdown[month];
                 });
-                totalGrandTotal += entry.grandTotal;
+                totalGrandTotal += Number(entry.grandTotal || 0);
             });
 
-            // Append Totals row 
+            // Append totals row.
             const totalRowNode = wsData.addRow({
                 unit: 'TOTAL',
                 janTarget: monthlyTargetTotals[0], febTarget: monthlyTargetTotals[1], marTarget: monthlyTargetTotals[2],
@@ -313,7 +319,7 @@ export const autoExcelWorkbookService = {
                 });
             });
 
-            // Auto-fit widths dynamically according to content
+            // Auto-fit widths dynamically according to content.
             wsData.columns.forEach(column => {
                 let maxLen = 0;
                 column.eachCell({ includeEmpty: true }, (cell) => {
@@ -340,7 +346,7 @@ export const autoExcelWorkbookService = {
 
             wsCharts.addImage(monthlyImageId, {
                 tl: { col: 0, row: 0 },
-                ext: { width: 650, height: 450 } // Matches canvas dimension tweaks
+                ext: { width: 650, height: 450 }
             });
 
             // Generate budget-per-unit pie chart
@@ -353,7 +359,7 @@ export const autoExcelWorkbookService = {
 
             wsCharts.addImage(unitImageId, {
                 tl: { col: 0, row: 24 },
-                ext: { width: 800, height: 450 } // Matches canvas dimension tweaks
+                ext: { width: 800, height: 450 }
             });
 
             const buffer = await wb.xlsx.writeBuffer();
@@ -362,11 +368,13 @@ export const autoExcelWorkbookService = {
             const timestamp = new Date().toISOString().split('T')[0];
             const yearPart = planningYear ? `${planningYear}_` : '';
 
-            link.href = URL.createObjectURL(blob);
+            const url = URL.createObjectURL(blob);
+            link.href = url;
             link.download = `approved_entries_dashboard_${yearPart}${timestamp}.xlsx`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            URL.revokeObjectURL(url);
 
         } catch (error) {
             console.error('Failed to run frontend workbook export service:', error);

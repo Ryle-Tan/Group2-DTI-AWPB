@@ -866,7 +866,7 @@ export const csvExportService = {
         }
         monthlyTotals[month] += entry.monthlyBreakdown[month];
       });
-      totalGrandTotal += entry.grandTotal;
+      totalGrandTotal += Number(entry.grandTotal || 0);
     });
 
     const totalsRow = {

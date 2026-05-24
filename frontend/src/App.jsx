@@ -15,7 +15,6 @@ import {
   realtimeService,
 } from "./services/supabaseService";
 
-const INITIAL_ACCOUNTS = [];
 const ADMIN_VIEW_STORAGE_KEY = "awpb_admin_active_view";
 const ADMIN_PLANNING_YEAR_STORAGE_KEY = "awpb_admin_planning_year";
 const SESSION_EXPIRES_AT_STORAGE_KEY = "awpb_session_expires_at";
@@ -267,7 +266,7 @@ function App() {
   const [entries, setEntries] = useState([]);
   const [entryBeingEdited, setEntryBeingEdited] = useState(null);
   const [submitEntryDraft, setSubmitEntryDraft] = useState(null);
-  const [accounts, setAccounts] = useState(INITIAL_ACCOUNTS);
+  const [accounts, setAccounts] = useState([]);
   const [templateData, setTemplateData] = useState({ hierarchy: {} });
   const [templateDefaultData, setTemplateDefaultData] = useState(
     () => getStoredTemplateDefaultState() || createInitialTemplateState(),
