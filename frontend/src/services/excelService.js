@@ -81,7 +81,6 @@ export const autoExcelWorkbookService = {
             ctx.fillStyle = '#555555';
             ctx.font = '12px Arial';
 
-            // FIXED: Changed notation from 'compact' to standard full financial rendering
             const formattedAmount = new Intl.NumberFormat('en-US', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
@@ -203,26 +202,22 @@ export const autoExcelWorkbookService = {
         return canvas.toDataURL('image/png');
     },
 
-    /**
-     * Browser-safe export generator 
-     */
     async exportWithDashboardChart(planningYear) {
         try {
-            // 1. Grab raw entries from your existing database service layer
             const entries = await csvExportService.fetchApprovedEntries(planningYear);
 
             if (!entries || entries.length === 0) {
                 throw new Error('No approved entries found to export');
             }
 
-            // 2. Initialize ExcelJS Workbook
+            // Initialize ExcelJS Workbook
             const wb = new ExcelJS.Workbook();
 
-            // 3. Setup worksheets
+            // Setup worksheets
             const wsDashboard = wb.addWorksheet('Dashboard');
             const wsData = wb.addWorksheet('Approved Entries');
 
-            // 4. Structural Table Headers mapping to your updated schema
+            // Structural Table Headers mapping to your updated schema
             const headers = [
                 { header: 'Planning Year', key: 'planningYear' },
                 { header: 'Status', key: 'status' },
@@ -263,7 +258,7 @@ export const autoExcelWorkbookService = {
             ];
             wsData.columns = headers;
 
-            // 5. Populate rows with real data types
+            // Populate rows with real data types
             entries.forEach(entry => {
                 const monthTargets = Object.values(entry.monthlyTargets || {});
                 const monthBreakdowns = Object.values(entry.monthlyBreakdown || {});
@@ -297,7 +292,7 @@ export const autoExcelWorkbookService = {
                 });
             });
 
-            // 6. Calculate Totals Accumulation
+            // Calculate Totals Accumulation
             const monthlyTargetTotals = {};
             const monthlyTotals = {};
             let totalGrandTotal = 0;
@@ -327,7 +322,6 @@ export const autoExcelWorkbookService = {
             });
             totalRowNode.font = { bold: true };
 
-            // 7. Loop cells to apply native financial number masks and fix lengths
             const currencyColumns = ['unitCost', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'grandTotal'];
 
             wsData.eachRow((row, rowNumber) => {
@@ -337,7 +331,7 @@ export const autoExcelWorkbookService = {
                 });
             });
 
-            // Auto-fit widths dynamically to permanently bypass '####' truncation blocks
+            // Auto-fit widths dynamically according to content
             wsData.columns.forEach(column => {
                 let maxLen = 0;
                 column.eachCell({ includeEmpty: true }, (cell) => {
@@ -347,7 +341,7 @@ export const autoExcelWorkbookService = {
                 column.width = maxLen < 12 ? 12 : maxLen + 3;
             });
 
-            // 8. Generate and embed Canvas Charts to Dashboard Tab
+            // Generate and embed Canvas Charts to Dashboard Worksheet
             const readableMonthsMap = {
                 'January': monthlyTotals[0] || 0, 'February': monthlyTotals[1] || 0, 'March': monthlyTotals[2] || 0,
                 'April': monthlyTotals[3] || 0, 'May': monthlyTotals[4] || 0, 'June': monthlyTotals[5] || 0,

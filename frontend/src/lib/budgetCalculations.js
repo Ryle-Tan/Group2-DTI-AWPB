@@ -29,17 +29,14 @@ export function getEntryBudgetTotal(entry) {
     return Number(entry.grandTotal || 0);
 }
 
-/**
- * Returns true when the entry status is approved.
- */
+// Returns true when the entry status is approved.
 export function isApprovedStatus(status) {
     return String(status || "").trim().toLowerCase() === "approved";
 }
 
-/**
- * Returns budgets grouped by unit for approved entries.
- * This includes all known unit codes and also any normalized unit values.
- */
+// Returns budgets grouped by unit for approved entries. 
+// This includes all known unit codes and also any normalized unit values.
+
 export function calculateUnitBudget(entries, planningYear = null) {
     const filteredEntries = entries.filter((entry) => {
         const approved = isApprovedStatus(entry.status);
@@ -78,9 +75,7 @@ export function calculateUnitBudget(entries, planningYear = null) {
     );
 }
 
-/**
- * Returns a simple map of unit -> approved budget amount.
- */
+// Returns a simple map of unit -> approved budget amount.
 export function getUnitBudgetMap(entries, planningYear = null) {
     return calculateUnitBudget(entries, planningYear).reduce((acc, item) => {
         acc[item.unit] = item.amount;
