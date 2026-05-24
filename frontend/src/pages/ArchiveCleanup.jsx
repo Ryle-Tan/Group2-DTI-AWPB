@@ -80,6 +80,9 @@ const BACKUP_EVENT_META = {
   },
 };
 
+const BLUE_MODAL_BUTTON_CLASS =
+  "border-0 bg-gradient-to-r from-[#1f2f74] to-[#2a4694] text-white shadow-[0_6px_16px_rgba(31,47,116,0.28)] hover:from-[#19265f] hover:to-[#213a80] hover:text-white";
+
 function getBackupEventMeta(eventType) {
   return (
     BACKUP_EVENT_META[eventType] || {
@@ -126,7 +129,7 @@ function DatabaseBackupGuideButton() {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button type="button" variant="outline">
+        <Button type="button" className={BLUE_MODAL_BUTTON_CLASS}>
           <Info size={16} />
           Database Backup Guide
         </Button>
@@ -160,6 +163,97 @@ function DatabaseBackupGuideButton() {
         </ol>
 
         <DialogFooter showCloseButton />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BackupActivityHistoryButton({ backupHistoryRows }) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button type="button" className={BLUE_MODAL_BUTTON_CLASS}>
+          <History size={16} />
+          Backup Activity History
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-5xl">
+        <DialogHeader>
+          <DialogTitle>Backup Activity History</DialogTitle>
+          <DialogDescription>
+            Review CSV downloads, database backup confirmations, and cleanup activity.
+          </DialogDescription>
+        </DialogHeader>
+
+        {backupHistoryRows.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-white p-5 text-sm text-slate-500">
+            No backup activity yet.
+          </div>
+        ) : (
+          <div className="max-h-[70vh] overflow-auto rounded-xl border border-slate-200 bg-white">
+            <div className="hidden grid-cols-[100px_190px_1.5fr_1fr] gap-4 border-b bg-slate-50 px-4 py-3 text-xs font-semibold uppercase text-slate-500 xl:grid">
+              <span>Year</span>
+              <span>Activity</span>
+              <span>Reference</span>
+              <span>Recorded By</span>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {backupHistoryRows.map((event) => {
+                const meta = getBackupEventMeta(event.event_type);
+
+                return (
+                  <div
+                    key={event.id}
+                    className="grid gap-4 px-4 py-4 text-sm xl:grid-cols-[100px_190px_1.5fr_1fr]"
+                  >
+                    <div>
+                      <p className="font-semibold text-slate-900">
+                        {event.planning_year}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-slate-400 xl:hidden">
+                        Activity
+                      </p>
+                      <Badge variant="outline" className={meta.className}>
+                        {meta.label}
+                      </Badge>
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase text-slate-400 xl:hidden">
+                        Reference
+                      </p>
+                      <p className="break-words font-medium text-slate-900">
+                        {event.reference || "No reference"}
+                      </p>
+                      {event.record_count !== null && event.record_count !== undefined ? (
+                        <p className="mt-1 text-slate-500">
+                          {event.record_count} record
+                          {Number(event.record_count) === 1 ? "" : "s"}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-slate-400 xl:hidden">
+                        Recorded By
+                      </p>
+                      <p className="font-medium text-slate-900">
+                        {event.actor_name || "Unknown admin"}
+                      </p>
+                      <p className="mt-1 text-slate-500">
+                        {formatDateTime(event.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -400,6 +494,7 @@ export default function ArchiveCleanup({
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <BackupActivityHistoryButton backupHistoryRows={backupHistoryRows} />
           <DatabaseBackupGuideButton />
           <Button
             type="button"
@@ -616,83 +711,6 @@ export default function ArchiveCleanup({
           );
         })}
       </div>
-
-      <section className="space-y-3">
-        <div className="flex items-center gap-2">
-          <History size={18} className="text-[#0b4f52]" />
-          <h2 className="text-xl font-semibold text-slate-900">Backup Activity History</h2>
-        </div>
-
-        {backupHistoryRows.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-200 bg-white p-5 text-sm text-slate-500">
-            No backup activity yet.
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="hidden grid-cols-[100px_190px_1.5fr_1fr] gap-4 border-b bg-slate-50 px-4 py-3 text-xs font-semibold uppercase text-slate-500 xl:grid">
-              <span>Year</span>
-              <span>Activity</span>
-              <span>Reference</span>
-              <span>Recorded By</span>
-            </div>
-
-            <div className="divide-y divide-slate-100">
-              {backupHistoryRows.map((event) => {
-                const meta = getBackupEventMeta(event.event_type);
-
-                return (
-                  <div
-                    key={event.id}
-                    className="grid gap-4 px-4 py-4 text-sm xl:grid-cols-[100px_190px_1.5fr_1fr]"
-                  >
-                    <div>
-                      <p className="font-semibold text-slate-900">
-                        {event.planning_year}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-semibold uppercase text-slate-400 xl:hidden">
-                        Activity
-                      </p>
-                      <Badge variant="outline" className={meta.className}>
-                        {meta.label}
-                      </Badge>
-                    </div>
-
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold uppercase text-slate-400 xl:hidden">
-                        Reference
-                      </p>
-                      <p className="break-words font-medium text-slate-900">
-                        {event.reference || "No reference"}
-                      </p>
-                      {event.record_count !== null && event.record_count !== undefined ? (
-                        <p className="mt-1 text-slate-500">
-                          {event.record_count} record
-                          {Number(event.record_count) === 1 ? "" : "s"}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-semibold uppercase text-slate-400 xl:hidden">
-                        Recorded By
-                      </p>
-                      <p className="font-medium text-slate-900">
-                        {event.actor_name || "Unknown admin"}
-                      </p>
-                      <p className="mt-1 text-slate-500">
-                        {formatDateTime(event.created_at)}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </section>
     </div>
   );
 }

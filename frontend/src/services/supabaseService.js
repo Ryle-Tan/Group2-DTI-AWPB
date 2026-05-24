@@ -312,14 +312,21 @@ export const usersService = {
   async delete(userId) {
     // Browser clients cannot safely call Supabase admin auth APIs. Treat
     // account removal as deactivation so RLS blocks future app/data access.
-    const { data, error } = await supabase
+    const { data: currentProfile, error: fetchError } = await supabase
       .from('profiles')
-      .update({ status: 'deactivated' })
+      .select('username, full_name, email, role')
       .eq('id', userId)
-      .select()
       .single();
-    if (error) throw error;
-    return data;
+
+    if (fetchError) throw fetchError;
+
+    return this.updateAccount(userId, {
+      username: currentProfile.username,
+      fullName: currentProfile.full_name,
+      email: currentProfile.email,
+      role: currentProfile.role,
+      status: 'deactivated',
+    });
   }
 };
 

@@ -1,12 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Pencil, RotateCcw, Search, UserPlus, UserX } from "lucide-react";
+import {
+  History,
+  Pencil,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  UserPlus,
+  UserX,
+} from "lucide-react";
 
 import AdminDeactivateUserModal from "@/components/admin/AdminDeactivateUserModal";
 import AdminEditUserModal from "@/components/admin/AdminEditUserModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { getPasswordPolicyError } from "@/lib/passwordPolicy";
 import { usersService } from "@/services/supabaseService";
@@ -41,6 +57,41 @@ const EMPTY_EDIT_FORM = {
   role: "encoder",
 };
 
+const ACCOUNT_LOG_META = {
+  account_created: {
+    label: "Created",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+  account_updated: {
+    label: "Updated",
+    className: "border-blue-200 bg-blue-50 text-blue-700",
+  },
+  account_deactivated: {
+    label: "Deactivated",
+    className: "border-red-200 bg-red-50 text-red-700",
+  },
+  account_activated: {
+    label: "Activated",
+    className: "border-green-200 bg-green-50 text-green-700",
+  },
+  password_changed: {
+    label: "Password Changed",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+  },
+};
+
+const ACCOUNT_CHANGE_LABELS = {
+  username: "username",
+  full_name: "full name",
+  email: "email",
+  role: "role",
+  status: "status",
+  password: "password",
+};
+
+const BLUE_MODAL_BUTTON_CLASS =
+  "border-0 bg-gradient-to-r from-[#1f2f74] to-[#2a4694] text-white shadow-[0_6px_16px_rgba(31,47,116,0.28)] hover:from-[#19265f] hover:to-[#213a80] hover:text-white";
+
 function getStatusBadgeVariant(status) {
   return status === "active" ? "statusApproved" : "statusRejected";
 }
@@ -49,6 +100,236 @@ function getRoleBadgeClass(role) {
   return role === "admin"
     ? "border-transparent bg-gradient-to-r from-[#1f2f74] to-[#2a4694] text-white shadow-[0_4px_10px_rgba(31,47,116,0.22)]"
     : "border-slate-200 bg-white text-slate-900";
+}
+
+function formatDateTime(value) {
+  if (!value) return "Not yet";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function getAccountLogMeta(action) {
+  return (
+    ACCOUNT_LOG_META[action] || {
+      label: "Account Activity",
+      className: "border-slate-200 bg-slate-50 text-slate-600",
+    }
+  );
+}
+
+function formatAccountLogValue(field, value) {
+  if (value === null || value === undefined || value === "") return "Blank";
+
+  if (field === "role") {
+    return value === "admin" ? "Admin" : "Account Officer";
+  }
+
+  if (field === "status") {
+    return value === "active" ? "Active" : "Deactivated";
+  }
+
+  return String(value);
+}
+
+function renderAccountLogDetails(log) {
+  const details = log.details || {};
+
+  if (details.backfilled) {
+    return "Existing account before logs were enabled.";
+  }
+
+  const changes = details.changes || {};
+  const changedFields = Object.keys(changes);
+
+  if (changedFields.length > 0) {
+    return (
+      <div className="space-y-1">
+        {changedFields.map((field) => {
+          const change = changes[field] || {};
+          const label = ACCOUNT_CHANGE_LABELS[field] || field.replaceAll("_", " ");
+
+          if (field === "password") {
+            return (
+              <p key={field}>
+                <span className="font-medium text-slate-700">Password:</span>{" "}
+                Changed
+              </p>
+            );
+          }
+
+          return (
+            <p key={field}>
+              <span className="font-medium text-slate-700">{label}:</span>{" "}
+              <span className="text-slate-500">
+                {formatAccountLogValue(field, change.from)}
+              </span>{" "}
+              <span className="text-slate-400">-&gt;</span>{" "}
+              <span className="font-medium text-slate-900">
+                {formatAccountLogValue(field, change.to)}
+              </span>
+            </p>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (details.created_account) {
+    const role =
+      details.created_account.role === "admin" ? "Admin" : "Account Officer";
+    const status = formatAccountLogValue("status", details.created_account.status);
+    return `Created ${role} account with ${status} status.`;
+  }
+
+  return "Account record was updated.";
+}
+
+function AccountActivityLogsButton({
+  accountLogs,
+  accountLogsError,
+  logsLoaded,
+  loadingLogs,
+  onLoad,
+  onRefresh,
+}) {
+  const [open, setOpen] = useState(false);
+
+  const handleOpenChange = (nextOpen) => {
+    setOpen(nextOpen);
+    if (nextOpen && !logsLoaded && !loadingLogs) {
+      onLoad();
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button type="button" className={BLUE_MODAL_BUTTON_CLASS}>
+          <History size={16} />
+          Account Activity Logs
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-6xl">
+        <DialogHeader>
+          <DialogTitle>Account Activity Logs</DialogTitle>
+          <DialogDescription>
+            Review account creation, edits, deactivation, reactivation, and password changes.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" onClick={onRefresh} disabled={loadingLogs}>
+            <RefreshCw size={16} />
+            {loadingLogs ? "Refreshing..." : "Refresh Logs"}
+          </Button>
+        </div>
+
+        {loadingLogs ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-white p-5 text-sm text-slate-500">
+            Loading account activity logs...
+          </div>
+        ) : accountLogsError ? (
+          <div className="rounded-xl border border-dashed border-red-200 bg-red-50 p-5 text-sm text-red-700">
+            {accountLogsError}
+          </div>
+        ) : !logsLoaded ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-white p-5 text-sm text-slate-500">
+            Account activity logs will load when this modal opens.
+          </div>
+        ) : accountLogs.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-white p-5 text-sm text-slate-500">
+            No account activity has been recorded yet.
+          </div>
+        ) : (
+          <div className="max-h-[70vh] overflow-auto rounded-xl border border-slate-200 bg-white">
+            <table className="min-w-[1000px] w-full table-fixed border-collapse text-sm">
+              <colgroup>
+                <col className="w-[17%]" />
+                <col className="w-[17%]" />
+                <col className="w-[25%]" />
+                <col className="w-[26%]" />
+                <col className="w-[15%]" />
+              </colgroup>
+              <thead className="bg-slate-50 text-left">
+                <tr className="border-b">
+                  <th className="px-4 py-2.5 font-semibold text-slate-700">
+                    Date
+                  </th>
+                  <th className="px-4 py-2.5 font-semibold text-slate-700">
+                    Activity
+                  </th>
+                  <th className="px-4 py-2.5 font-semibold text-slate-700">
+                    Account
+                  </th>
+                  <th className="px-4 py-2.5 font-semibold text-slate-700">
+                    Details
+                  </th>
+                  <th className="px-4 py-2.5 font-semibold text-slate-700">
+                    Done By
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {accountLogs.map((log) => {
+                  const meta = getAccountLogMeta(log.action);
+
+                  return (
+                    <tr key={log.id} className="border-b last:border-b-0">
+                      <td className="px-4 py-4 align-top text-slate-600">
+                        {formatDateTime(log.created_at)}
+                      </td>
+                      <td className="px-4 py-4 align-top">
+                        <Badge variant="outline" className={meta.className}>
+                          {meta.label}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-4 align-top">
+                        <p
+                          className="truncate font-medium text-slate-900"
+                          title={log.target_full_name || ""}
+                        >
+                          {log.target_full_name || "Unknown account"}
+                        </p>
+                        <p
+                          className="mt-1 truncate text-slate-500"
+                          title={`${log.target_username || "No username"} - ${
+                            log.target_email || "No email"
+                          }`}
+                        >
+                          {log.target_username || "No username"} -{" "}
+                          {log.target_email || "No email"}
+                        </p>
+                      </td>
+                      <td className="px-4 py-4 align-top text-slate-600">
+                        {renderAccountLogDetails(log)}
+                      </td>
+                      <td className="px-4 py-4 align-top">
+                        <p
+                          className="truncate font-medium text-slate-900"
+                          title={log.actor_name || ""}
+                        >
+                          {log.actor_name || "Unknown admin"}
+                        </p>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export default function ManageAccounts({
@@ -65,10 +346,39 @@ export default function ManageAccounts({
   const [deactivateTarget, setDeactivateTarget] = useState(null);
 
   const [accounts, setAccounts] = useState(accountsProp);
+  const [accountLogs, setAccountLogs] = useState([]);
+  const [accountLogsError, setAccountLogsError] = useState("");
+  const [accountLogsLoaded, setAccountLogsLoaded] = useState(false);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   useEffect(() => {
     setAccounts(accountsProp);
   }, [accountsProp]);
+
+  const loadAccountLogs = useCallback(async ({ showErrorToast = true } = {}) => {
+    setLoadingLogs(true);
+    setAccountLogsError("");
+    try {
+      const logs = await usersService.getAccountLogs();
+      setAccountLogs(logs);
+      setAccountLogsLoaded(true);
+    } catch (error) {
+      console.error("Failed to load account activity logs:", error);
+      const message =
+        error.message ||
+        "Could not load account logs. Make sure the account activity migration has been applied.";
+      setAccountLogsError(message);
+      if (showErrorToast) {
+        onShowToast?.({
+          title: "Account activity logs unavailable",
+          description: message,
+          type: "error",
+        });
+      }
+    } finally {
+      setLoadingLogs(false);
+    }
+  }, [onShowToast]);
 
   const persistAccountUpdate = async (accountId, updates) => {
     setAccounts((prev) =>
@@ -80,6 +390,9 @@ export default function ManageAccounts({
     try {
       await usersService.update(accountId, mapUpdatesToProfile(updates));
       onUpdateAccount?.(accountId, updates);
+      if (accountLogsLoaded) {
+        await loadAccountLogs({ showErrorToast: false });
+      }
       return true;
     } catch (err) {
       console.error("Failed to update account in Supabase:", err);
@@ -235,6 +548,9 @@ export default function ManageAccounts({
           ),
         );
         onUpdateAccount?.(editTarget.id, savedAccount);
+        if (accountLogsLoaded) {
+          await loadAccountLogs({ showErrorToast: false });
+        }
 
         onShowToast?.({
           title: "Account updated",
@@ -350,6 +666,15 @@ export default function ManageAccounts({
               <Button variant="outline" onClick={resetFilters}>
                 Reset
               </Button>
+
+              <AccountActivityLogsButton
+                accountLogs={accountLogs}
+                accountLogsError={accountLogsError}
+                logsLoaded={accountLogsLoaded}
+                loadingLogs={loadingLogs}
+                onLoad={loadAccountLogs}
+                onRefresh={loadAccountLogs}
+              />
 
               <Button
                 asChild
