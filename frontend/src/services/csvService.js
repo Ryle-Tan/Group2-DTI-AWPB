@@ -574,26 +574,32 @@ export const csvExportService = {
    * @returns {Array} Array of flattened entry objects for CSV
    */
   transformEntriesForCSV(entries) {
-    return entries.map(entry => ({
-      'Planning Year': entry.planningYear,
-      'Status': formatStatusForCSV(entry.status || 'Approved'),
-      'Unit': entry.unit,
-      'Component': entry.component,
-      'Sub Component': entry.subComponent,
-      'Key Activity': entry.keyActivity,
-      'Activity No.': entry.no,
-      'Performance Indicator': entry.performanceIndicator,
-      'Sub Activity': entry.subActivity,
-      'Title of Activities': entry.titleOfActivities,
-      'Unit Cost': entry.unitCost,
-      ...MONTHS_LIST.reduce((acc, monthKey) => {
-        const monthName = this.getMonthName(monthKey);
-        acc[`${monthName} Target`] = entry.monthlyTargets?.[monthName] ?? 0;
-        return acc;
-      }, {}),
-      ...entry.monthlyBreakdown,
-      'Grand Total': entry.grandTotal,
-    }));
+    return entries.map(entry => {
+      const formattedMonthlyBreakdown = {};
+      Object.keys(entry.monthlyBreakdown || {}).forEach(monthKey => {
+        formattedMonthlyBreakdown[monthKey] = this.formatCurrency(entry.monthlyBreakdown[monthKey]);
+      });
+      return {
+        'Planning Year': entry.planningYear,
+        'Status': formatStatusForCSV(entry.status || 'Approved'),
+        'Unit': entry.unit,
+        'Component': entry.component,
+        'Sub Component': entry.subComponent,
+        'Key Activity': entry.keyActivity,
+        'Activity No.': entry.no,
+        'Performance Indicator': entry.performanceIndicator,
+        'Sub Activity': entry.subActivity,
+        'Title of Activities': entry.titleOfActivities,
+        'Unit Cost': this.formatCurrency(entry.unitCost),
+        ...MONTHS_LIST.reduce((acc, monthKey) => {
+          const monthName = this.getMonthName(monthKey);
+          acc[`${monthName} Target`] = entry.monthlyTargets?.[monthName] ?? 0;
+          return acc;
+        }, {}),
+        ...formattedMonthlyBreakdown,
+        'Grand Total': this.formatCurrency(entry.grandTotal),
+      }
+    });
   },
 
   transformEntriesForYearlyBackup(entries, year) {
@@ -697,12 +703,19 @@ export const csvExportService = {
         }
         monthlyTargetTotals[month] += Number(entry.monthlyTargets[month] || 0);
       });
+
       Object.keys(entry.monthlyBreakdown).forEach(month => {
         if (!monthlyTotals[month]) {
           monthlyTotals[month] = 0;
         }
         monthlyTotals[month] += entry.monthlyBreakdown[month];
       });
+
+      const formattedMonthlyTotals = {};
+      Object.keys(monthlyTotals).forEach(month => {
+        formattedMonthlyTotals[this.getMonthName(month)] = this.formatCurrency(monthlyTotals[month]);
+      });
+
       totalGrandTotal += entry.grandTotal;
     });
 
@@ -727,8 +740,8 @@ export const csvExportService = {
         acc[`${monthName} Target`] = monthlyTargetTotals[monthName] || 0;
         return acc;
       }, {}),
-      ...monthlyTotals,
-      'Grand Total': totalGrandTotal,
+      ...formattedMonthlyTotals,
+      'Grand Total': this.formatCurrency(totalGrandTotal),
     };
 
     return totalsRow;
