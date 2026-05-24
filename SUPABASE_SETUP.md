@@ -41,8 +41,6 @@ VITE_APP_URL=https://your-app.vercel.app
 
 ## Step 3: Run Database Migrations
 
-For an explanation of why the migration chain is long and how it is grouped, see `supabase/README.md`.
-
 ### Option A: Using Supabase Dashboard (Recommended)
 1. Go to **SQL Editor** in your Supabase project
 2. Run every file in `supabase/migrations/` in numeric order, from:
