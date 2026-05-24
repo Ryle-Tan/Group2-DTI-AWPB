@@ -1012,8 +1012,8 @@ export default function AdminReview({
 
       <Card className="overflow-hidden border-0 shadow-[0_10px_24px_rgba(15,23,42,0.08)] gap-0 py-0">
         <CardHeader className="border-b bg-white px-6 pt-5 pb-4">
-          <div className="flex flex-col gap-4 min-[1800px]:flex-row min-[1800px]:items-start min-[1800px]:justify-between">
-            <div className="min-[1800px]:basis-[26%] min-[1800px]:shrink-0">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="xl:w-[30%] xl:max-w-[360px] xl:shrink-0">
               <CardTitle className="text-2xl">All Submitted Entries</CardTitle>
               <p className="mt-1 text-sm text-slate-500">
                 Search and filter {yearFilter} submissions for admin review.
@@ -1023,79 +1023,84 @@ export default function AdminReview({
               </p>
             </div>
 
-            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_125px_115px_auto_auto_auto_auto] xl:items-center min-[1800px]:w-[72%] min-[1800px]:grid-cols-[280px_125px_115px_auto_auto_auto_auto] min-[1800px]:justify-start">
-              <div className="relative min-w-0">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search title, sub activity, or unit"
-                  className="pl-9"
-                />
+            <div className="flex w-full flex-col gap-3 xl:min-w-0 xl:flex-1">
+              <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[320px_125px_115px_auto] lg:items-center xl:ml-auto xl:w-auto xl:justify-end">
+                <div className="relative min-w-0">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search title, sub activity, or unit"
+                    className="pl-9"
+                  />
+                </div>
+
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="All Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="Pending Review">Pending Review</SelectItem>
+                    <SelectItem value="Returned">Returned</SelectItem>
+                    <SelectItem value="Rejected">Rejected</SelectItem>
+                    <SelectItem value="Approved">Approved</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={unitFilter} onValueChange={setUnitFilter}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="All Units" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Units</SelectItem>
+                    {availableUnits.map((unit) => (
+                      <SelectItem key={unit} value={unit}>
+                        {formatUnitCode(unit)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Button onClick={clearFilters} className={`whitespace-nowrap ${gradientButtonClass}`}>
+                  Reset Filters
+                </Button>
               </div>
 
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="All Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="Pending Review">Pending Review</SelectItem>
-                  <SelectItem value="Returned">Returned</SelectItem>
-                  <SelectItem value="Rejected">Rejected</SelectItem>
-                  <SelectItem value="Approved">Approved</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={unitFilter} onValueChange={setUnitFilter}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="All Units" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Units</SelectItem>
-                  {availableUnits.map((unit) => (
-                    <SelectItem key={unit} value={unit}>
-                      {formatUnitCode(unit)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Button onClick={clearFilters} className={`whitespace-nowrap ${gradientButtonClass}`}>
-                Reset Filters
-              </Button>
-              <Button
-                onClick={handleExportApprovedEntriesToCSV}
-                disabled={csvExporting}
-                className={`whitespace-nowrap disabled:cursor-wait disabled:opacity-75 ${gradientButtonClass}`}
-              >
-                <Download size={16} />
-                {csvExporting ? "Exporting CSV..." : `Export ${yearFilter} CSV`}
-              </Button>
-              <Button
-                onClick={handleExportApprovedEntriesToExcel}
-                disabled={excelExporting}
-                className={`whitespace-nowrap disabled:cursor-wait disabled:opacity-75 ${gradientButtonClass}`}
-              >
-                <Download size={16} />
-                {excelExporting ? "Exporting Excel..." : `Export ${yearFilter} Excel`}
-              </Button>
-              <Button
-                type="button"
-                onClick={handleImportCsvClick}
-                disabled={csvImporting}
-                className={`whitespace-nowrap disabled:cursor-wait disabled:opacity-75 ${gradientButtonClass}`}
-              >
-                <Upload size={16} />
-                {csvImporting ? "Importing CSV..." : "Import CSV"}
-              </Button>
-              <input
-                ref={csvImportInputRef}
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={handleImportApprovedEntriesFromCSV}
-              />
+              <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3 xl:ml-auto xl:w-auto xl:grid-cols-[auto_auto_auto] xl:justify-end">
+                <Button
+                  onClick={handleExportApprovedEntriesToCSV}
+                  disabled={csvExporting}
+                  className={`whitespace-nowrap disabled:cursor-wait disabled:opacity-75 ${gradientButtonClass}`}
+                >
+                  <Download size={16} />
+                  {csvExporting ? "Exporting CSV..." : `Export ${yearFilter} CSV`}
+                </Button>
+                <Button
+                  onClick={handleExportApprovedEntriesToExcel}
+                  disabled={excelExporting}
+                  className={`whitespace-nowrap disabled:cursor-wait disabled:opacity-75 ${gradientButtonClass}`}
+                >
+                  <Download size={16} />
+                  {excelExporting ? "Exporting Excel..." : `Export ${yearFilter} Excel`}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleImportCsvClick}
+                  disabled={csvImporting}
+                  className={`whitespace-nowrap disabled:cursor-wait disabled:opacity-75 ${gradientButtonClass}`}
+                >
+                  <Upload size={16} />
+                  {csvImporting ? "Importing CSV..." : "Import CSV"}
+                </Button>
+                <input
+                  ref={csvImportInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={handleImportApprovedEntriesFromCSV}
+                />
+              </div>
             </div>
           </div>
         </CardHeader>
