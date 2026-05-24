@@ -125,6 +125,7 @@ export default function AdminReview({
   const [pdfExportingEntryId, setPdfExportingEntryId] = useState(null);
   const [csvExporting, setCsvExporting] = useState(false);
   const [csvImporting, setCsvImporting] = useState(false);
+  const [excelExporting, setExcelExporting] = useState(false);
   const [deleteActionBusy, setDeleteActionBusy] = useState(false);
   const [unitAllocationSaving, setUnitAllocationSaving] = useState(false);
   const csvImportInputRef = useRef(null);
@@ -388,6 +389,29 @@ export default function AdminReview({
       });
     } finally {
       setCsvExporting(false);
+    }
+  };
+
+  const handleExportApprovedEntriesToExcel = async () => {
+    if (excelExporting) return;
+
+    setExcelExporting(true);
+    try {
+      const { autoExcelWorkbookService } = await import("../services/excelService");
+      await autoExcelWorkbookService.exportWithDashboardChart(yearFilter);
+      onShowToast?.({
+        title: "Excel export successful",
+        description: `Exported approved ${yearFilter} entries to Excel with dashboard chart.`,
+        type: "success",
+      });
+    } catch (error) {
+      onShowToast?.({
+        title: "Excel export failed",
+        description: error.message || "Could not export approved entries to Excel.",
+        type: "error",
+      });
+    } finally {
+      setExcelExporting(false);
     }
   };
 
@@ -999,6 +1023,14 @@ export default function AdminReview({
               >
                 <Download size={16} />
                 {csvExporting ? "Exporting CSV..." : `Export ${yearFilter} CSV`}
+              </Button>
+              <Button
+                onClick={handleExportApprovedEntriesToExcel}
+                disabled={excelExporting}
+                className={`whitespace-nowrap disabled:cursor-wait disabled:opacity-75 ${gradientButtonClass}`}
+              >
+                <Download size={16} />
+                {excelExporting ? "Exporting Excel..." : `Export ${yearFilter} Excel`}
               </Button>
               <Button
                 type="button"
