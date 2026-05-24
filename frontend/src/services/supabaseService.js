@@ -105,6 +105,42 @@ function isBlankClassification(value) {
   );
 }
 
+function normalizeTemplateLookupValue(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function templateLookupValuesEqual(a, b) {
+  return normalizeTemplateLookupValue(a) === normalizeTemplateLookupValue(b);
+}
+
+function templateRowMatchesInput(row, value) {
+  const input = String(value ?? '').trim();
+  const normalizedInput = normalizeTemplateLookupValue(input);
+  if (!normalizedInput) return false;
+
+  const rowName = row?.name || '';
+  const normalizedName = normalizeTemplateLookupValue(rowName);
+  const inputPrefix = getTemplatePrefix(input);
+  const rowNamePrefix = getTemplatePrefix(rowName);
+  const rowActivityNo = String(row?.activity_no ?? '').trim();
+
+  if (normalizedName === normalizedInput) return true;
+  if (rowActivityNo && templateLookupValuesEqual(rowActivityNo, input)) return true;
+  if (inputPrefix && rowNamePrefix && inputPrefix === rowNamePrefix) return true;
+  if (!inputPrefix && normalizedName.startsWith(`${normalizedInput} `)) return true;
+  if (!inputPrefix && normalizedName.startsWith(`${normalizedInput} -`)) return true;
+
+  return false;
+}
+
+function pickTemplateRow(rows, value) {
+  const candidates = rows || [];
+  const activeRows = candidates.filter((row) => row?.is_active !== false);
+  const orderedRows = activeRows.length > 0 ? activeRows : candidates;
+
+  return orderedRows.find((row) => templateRowMatchesInput(row, value)) || null;
+}
+
 function normalizeNullableTimestamp(value) {
   return value === '' ? null : value;
 }
@@ -486,63 +522,116 @@ export const entriesService = {
       return data?.id;
     };
     
-    const findComponentId = async (name) => {
-      const { data } = await supabase
+    const findComponent = async (name) => {
+      const { data, error } = await supabase
         .from('components')
-        .select('id')
-        .eq('name', name)
-        .maybeSingle();
-      return data?.id;
+        .select('id, name, is_active')
+        .eq('is_active', true)
+        .order('sort_order');
+      if (error) throw error;
+      return pickTemplateRow(data, name);
     };
     
-    const findSubComponentId = async (name) => {
+    const findSubComponent = async (name, componentId) => {
       if (isBlankClassification(name)) return null;
-      const { data } = await supabase
+      let query = supabase
         .from('sub_components')
-        .select('id')
-        .eq('name', name)
-        .maybeSingle();
-      return data?.id;
+        .select('id, name, component_id, is_active, sort_order')
+        .eq('is_active', true)
+        .order('sort_order');
+      if (componentId) query = query.eq('component_id', componentId);
+      const { data, error } = await query;
+      if (error) throw error;
+      const scopedMatch = pickTemplateRow(data, name);
+      if (scopedMatch || !componentId) return scopedMatch;
+
+      const fallback = await supabase
+        .from('sub_components')
+        .select('id, name, component_id, is_active, sort_order')
+        .eq('is_active', true)
+        .order('sort_order');
+      if (fallback.error) throw fallback.error;
+      return pickTemplateRow(fallback.data, name);
     };
     
-    const findKeyActivityId = async (name) => {
+    const findKeyActivity = async (name, subComponentId) => {
       if (isBlankClassification(name)) return null;
-      const { data } = await supabase
+      let query = supabase
         .from('key_activities')
-        .select('id')
-        .eq('name', name)
-        .maybeSingle();
-      return data?.id;
+        .select('id, name, activity_no, sub_component_id, is_active, sort_order')
+        .eq('is_active', true)
+        .order('sort_order');
+      if (subComponentId) query = query.eq('sub_component_id', subComponentId);
+      const { data, error } = await query;
+      if (error) throw error;
+      const scopedMatch = pickTemplateRow(data, name);
+      if (scopedMatch || !subComponentId) return scopedMatch;
+
+      const fallback = await supabase
+        .from('key_activities')
+        .select('id, name, activity_no, sub_component_id, is_active, sort_order')
+        .eq('is_active', true)
+        .order('sort_order');
+      if (fallback.error) throw fallback.error;
+      return pickTemplateRow(fallback.data, name);
     };
     
-    const findSubActivityId = async (name) => {
+    const findSubActivity = async (name, keyActivityId) => {
       if (isBlankClassification(name)) return null;
-      const { data } = await supabase
+      let query = supabase
         .from('sub_activities')
-        .select('id')
-        .eq('name', name)
-        .maybeSingle();
-      return data?.id;
+        .select('id, name, key_activity_id, is_active, sort_order')
+        .eq('is_active', true)
+        .order('sort_order');
+      if (keyActivityId) query = query.eq('key_activity_id', keyActivityId);
+      let { data, error } = await query;
+
+      if (error?.message?.includes('key_activity_id')) {
+        const fallback = await supabase
+          .from('sub_activities')
+          .select('id, name, is_active, sort_order')
+          .eq('is_active', true)
+          .order('sort_order');
+        data = fallback.data;
+        error = fallback.error;
+      }
+
+      if (error) throw error;
+      const scopedMatch = pickTemplateRow(data, name);
+      if (scopedMatch || !keyActivityId) return scopedMatch;
+
+      const fallback = await supabase
+        .from('sub_activities')
+        .select('id, name, is_active, sort_order')
+        .eq('is_active', true)
+        .order('sort_order');
+      if (fallback.error) throw fallback.error;
+      return pickTemplateRow(fallback.data, name);
     };
     
-    const [
-      unitId,
-      componentId,
-      subComponentId,
-      keyActivityId,
-      subActivityId,
-    ] = await Promise.all([
-      entryData.unitId || findUnitId(entryData.unit),
-      entryData.componentId || findComponentId(entryData.component),
-      entryData.subComponentId || findSubComponentId(entryData.subComponent),
-      entryData.keyActivityId || findKeyActivityId(entryData.keyActivity),
-      entryData.subActivityId || findSubActivityId(entryData.subActivity),
-    ]);
+    const unitId = entryData.unitId || await findUnitId(entryData.unit);
+    const componentRow = entryData.componentId
+      ? { id: entryData.componentId, name: entryData.component }
+      : await findComponent(entryData.component);
+    const componentId = componentRow?.id;
+    const subComponentRow = entryData.subComponentId
+      ? { id: entryData.subComponentId, name: entryData.subComponent }
+      : await findSubComponent(entryData.subComponent, componentId);
+    const subComponentId = subComponentRow?.id;
+    const keyActivityRow = entryData.keyActivityId
+      ? { id: entryData.keyActivityId, name: entryData.keyActivity }
+      : await findKeyActivity(entryData.keyActivity, subComponentId);
+    const keyActivityId = keyActivityRow?.id;
+    const subActivityRow = entryData.subActivityId
+      ? { id: entryData.subActivityId, name: entryData.subActivity }
+      : await findSubActivity(entryData.subActivity, keyActivityId);
+    const subActivityId = subActivityRow?.id;
     
     if (!unitId) throw new Error(`Unit not found: ${entryData.unit}`);
     if (!componentId) throw new Error(`Component not found: ${entryData.component}`);
     if (!isBlankClassification(entryData.subComponent) && !subComponentId) throw new Error(`Sub-component not found: ${entryData.subComponent}`);
     if (!isBlankClassification(entryData.keyActivity) && !keyActivityId) throw new Error(`Key activity not found: ${entryData.keyActivity}`);
+    if (!isBlankClassification(entryData.subActivity) && !subActivityId) throw new Error(`Sub-activity not found: ${entryData.subActivity}`);
     
     // Insert entry
     const insertData = {
@@ -1817,24 +1906,6 @@ export const archiveBackupService = {
 
     if (error) throw error;
     return data;
-  },
-
-  async confirmDatabaseBackup({ planningYear, filename }) {
-    const { data, error } = await supabase.rpc('admin_confirm_database_backup', {
-      p_planning_year: Number(planningYear),
-      p_reference: filename,
-    });
-
-    if (error) throw error;
-    return data;
-  },
-
-  async markDatabaseBackupDone(args) {
-    return this.confirmDatabaseBackup(args);
-  },
-
-  async markSqlBackupDone(args) {
-    return this.confirmDatabaseBackup(args);
   },
 
   async cleanupYear(planningYear) {

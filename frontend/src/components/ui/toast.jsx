@@ -1,4 +1,4 @@
-import { CheckCircle2, Info, X } from "lucide-react";
+import { CheckCircle2, CircleAlert, Info, X } from "lucide-react";
 
 const toneMap = {
   success: {
@@ -9,13 +9,23 @@ const toneMap = {
     wrapper: "border-slate-200 bg-white text-slate-900",
     icon: "text-slate-500",
   },
+  error: {
+    wrapper: "border-rose-200 bg-rose-50 text-rose-950",
+    icon: "text-rose-600",
+  },
+};
+
+const iconMap = {
+  success: CheckCircle2,
+  error: CircleAlert,
+  info: Info,
 };
 
 export default function Toast({ toast, onDismiss }) {
   if (!toast) return null;
 
   const tone = toneMap[toast.type] || toneMap.info;
-  const Icon = toast.type === "success" ? CheckCircle2 : Info;
+  const Icon = iconMap[toast.type] || Info;
 
   return (
     <div className="pointer-events-none fixed bottom-6 right-6 z-[100] flex w-full max-w-sm justify-end md:bottom-10 md:right-10">
