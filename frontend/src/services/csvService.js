@@ -924,7 +924,7 @@ export const csvExportService = {
     }
   },
 
-  exportYearlyEntriesBackupToCSV(entries, year) {
+  createYearlyEntriesBackup(entries, year) {
     const archiveEntries = (entries || []).filter(
       (entry) => String(entry.planningYear || '') === String(year),
     );
@@ -936,11 +936,21 @@ export const csvExportService = {
     const csvContent = this.convertYearlyBackupToCSV(archiveEntries, year);
     const filename = this.generateYearlyBackupFilename(year);
 
-    this.downloadCSV(csvContent, filename);
-
     return {
+      csvContent,
       filename,
       recordCount: archiveEntries.length,
+    };
+  },
+
+  exportYearlyEntriesBackupToCSV(entries, year) {
+    const backup = this.createYearlyEntriesBackup(entries, year);
+
+    this.downloadCSV(backup.csvContent, backup.filename);
+
+    return {
+      filename: backup.filename,
+      recordCount: backup.recordCount,
     };
   }
 };

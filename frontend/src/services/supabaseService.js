@@ -1908,24 +1908,6 @@ export const archiveBackupService = {
     return data;
   },
 
-  async confirmDatabaseBackup({ planningYear, filename }) {
-    const { data, error } = await supabase.rpc('admin_confirm_database_backup', {
-      p_planning_year: Number(planningYear),
-      p_reference: filename,
-    });
-
-    if (error) throw error;
-    return data;
-  },
-
-  async markDatabaseBackupDone(args) {
-    return this.confirmDatabaseBackup(args);
-  },
-
-  async markSqlBackupDone(args) {
-    return this.confirmDatabaseBackup(args);
-  },
-
   async cleanupYear(planningYear) {
     const { data, error } = await supabase.rpc('admin_cleanup_archive_year', {
       p_planning_year: Number(planningYear),

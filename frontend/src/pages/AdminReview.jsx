@@ -84,6 +84,31 @@ function isApprovedStatus(status) {
   return String(status || "").trim().toLowerCase() === "approved";
 }
 
+function getImportProblemRows(result) {
+  return [
+    ...(result.failedRows || []).map((row) => ({
+      rowNumber: row.rowNumber,
+      message: row.message || "Import failed.",
+    })),
+    ...(result.skippedRows || []).map((row) => ({
+      rowNumber: row.rowNumber,
+      message: row.message || "Duplicate entry skipped.",
+    })),
+  ].sort((a, b) => Number(a.rowNumber || 0) - Number(b.rowNumber || 0));
+}
+
+function formatImportProblemDescription(problemRows) {
+  const visibleRows = problemRows.slice(0, 3);
+  const details = visibleRows
+    .map((row) => `Row ${row.rowNumber || "?"}: ${row.message}`)
+    .join(" ");
+  const hiddenCount = problemRows.length - visibleRows.length;
+
+  return hiddenCount > 0
+    ? `${details} ${hiddenCount} more row${hiddenCount === 1 ? "" : "s"} not shown.`
+    : details;
+}
+
 const gradientButtonClass =
   "border-0 bg-gradient-to-r from-[#1f2f74] to-[#2a4694] text-white shadow-[0_6px_16px_rgba(31,47,116,0.28)] transition-all duration-200 hover:from-[#19265f] hover:to-[#213a80] hover:shadow-[0_10px_24px_rgba(31,47,116,0.38)]";
 
@@ -128,9 +153,16 @@ export default function AdminReview({
   const [deleteActionBusy, setDeleteActionBusy] = useState(false);
   const [unitAllocationSaving, setUnitAllocationSaving] = useState(false);
   const csvImportInputRef = useRef(null);
+  const importProblemToastTimerRef = useRef(null);
 
   const entries = entriesProp;
   const currentAdminId = currentUser?.id || null;
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(importProblemToastTimerRef.current);
+    };
+  }, []);
 
   const approvedEntries = useMemo(() => {
     return entries.filter(
@@ -402,10 +434,13 @@ export default function AdminReview({
     if (!file || csvImporting) return;
 
     setCsvImporting(true);
+    window.clearTimeout(importProblemToastTimerRef.current);
+
     try {
       const { csvImportService } = await import("../services/csvService");
       const result = await csvImportService.importEntriesFromCSV(file, entries);
       onImportEntries?.(result.createdEntries);
+      const problemRows = getImportProblemRows(result);
 
       const skippedText =
         result.skippedRows.length > 0
@@ -421,6 +456,19 @@ export default function AdminReview({
         description: `Imported ${result.importedCount} entr${result.importedCount === 1 ? "y" : "ies"} with their CSV status.${skippedText}${failedText}`,
         type: result.failedRows.length > 0 || result.skippedRows.length > 0 ? "info" : "success",
       });
+
+      if (problemRows.length > 0) {
+        importProblemToastTimerRef.current = window.setTimeout(() => {
+          onShowToast?.({
+            title:
+              problemRows.length === 1
+                ? "Why 1 row was not imported"
+                : `Why ${problemRows.length} rows were not imported`,
+            description: formatImportProblemDescription(problemRows),
+            type: "error",
+          });
+        }, 2800);
+      }
     } catch (error) {
       onShowToast?.({
         title: "CSV import failed",
