@@ -105,6 +105,42 @@ function isBlankClassification(value) {
   );
 }
 
+function shouldSkipClassificationLookup(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === '' || normalized.startsWith('select ');
+}
+
+function normalizeEntryClassificationText(value) {
+  const text = String(value ?? '').trim();
+  return isBlankClassification(text) ? 'N/A' : text;
+}
+
+function normalizeEntryClassificationValues(entryData = {}) {
+  return {
+    subComponent: normalizeEntryClassificationText(entryData.subComponent),
+    keyActivity: normalizeEntryClassificationText(entryData.keyActivity),
+    no: normalizeEntryClassificationText(entryData.no),
+    performanceIndicator: normalizeEntryClassificationText(entryData.performanceIndicator),
+    subActivity: normalizeEntryClassificationText(entryData.subActivity),
+  };
+}
+
+function getEntryClassificationText(savedText, joinedText, fallback = 'N/A') {
+  return String(savedText || joinedText || fallback).trim();
+}
+
+function findDisplayedFallbackTemplateRow(rows) {
+  return (rows || []).find((row) => String(row?.name || '').trim() === '') || null;
+}
+
+function pickTemplateRowWithDisplayedFallback(rows, value) {
+  const match = pickTemplateRow(rows, value);
+  if (match) return match;
+  return String(value || '').trim().toLowerCase() === 'n/a'
+    ? findDisplayedFallbackTemplateRow(rows)
+    : null;
+}
+
 function normalizeTemplateLookupValue(value) {
   return String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -394,17 +430,28 @@ export const entriesService = {
       planningYear: row.planning_year,
       unit: normalizeUnitCode(row.units?.code || row.units?.name || ''),
       component: row.components?.name || '',
-      subComponent: row.sub_components?.name || '',
-      keyActivity: row.key_activities?.name || '',
+      subComponent: getEntryClassificationText(
+        row.sub_component_text,
+        row.sub_components?.name,
+      ),
+      keyActivity: getEntryClassificationText(
+        row.key_activity_text,
+        row.key_activities?.name,
+      ),
       // Prefer entry-level values saved from Submit Entry. The template now
       // stores No./PI in performance_indicators, so key_activities may be blank.
-      no: row.no || row.activity_no || row.key_activities?.activity_no || '',
-      performanceIndicator:
-        row.performance_indicator ||
-        row.performanceIndicator ||
-        row.key_activities?.performance_indicator ||
-        '',
-      subActivity: row.sub_activities?.name || '',
+      no: getEntryClassificationText(
+        row.no || row.activity_no,
+        row.key_activities?.activity_no,
+      ),
+      performanceIndicator: getEntryClassificationText(
+        row.performance_indicator || row.performanceIndicator,
+        row.key_activities?.performance_indicator,
+      ),
+      subActivity: getEntryClassificationText(
+        row.sub_activity_text,
+        row.sub_activities?.name,
+      ),
       titleOfActivities: row.title_of_activities,
       unitCost: Number(row.unit_cost) || 0,
       monthlyBreakdown: monthlyBreakdown,
@@ -533,7 +580,7 @@ export const entriesService = {
     };
     
     const findSubComponent = async (name, componentId) => {
-      if (isBlankClassification(name)) return null;
+      if (shouldSkipClassificationLookup(name)) return null;
       let query = supabase
         .from('sub_components')
         .select('id, name, component_id, is_active, sort_order')
@@ -542,7 +589,7 @@ export const entriesService = {
       if (componentId) query = query.eq('component_id', componentId);
       const { data, error } = await query;
       if (error) throw error;
-      const scopedMatch = pickTemplateRow(data, name);
+      const scopedMatch = pickTemplateRowWithDisplayedFallback(data, name);
       if (scopedMatch || !componentId) return scopedMatch;
 
       const fallback = await supabase
@@ -551,11 +598,11 @@ export const entriesService = {
         .eq('is_active', true)
         .order('sort_order');
       if (fallback.error) throw fallback.error;
-      return pickTemplateRow(fallback.data, name);
+      return pickTemplateRowWithDisplayedFallback(fallback.data, name);
     };
     
     const findKeyActivity = async (name, subComponentId) => {
-      if (isBlankClassification(name)) return null;
+      if (shouldSkipClassificationLookup(name)) return null;
       let query = supabase
         .from('key_activities')
         .select('id, name, activity_no, sub_component_id, is_active, sort_order')
@@ -564,7 +611,7 @@ export const entriesService = {
       if (subComponentId) query = query.eq('sub_component_id', subComponentId);
       const { data, error } = await query;
       if (error) throw error;
-      const scopedMatch = pickTemplateRow(data, name);
+      const scopedMatch = pickTemplateRowWithDisplayedFallback(data, name);
       if (scopedMatch || !subComponentId) return scopedMatch;
 
       const fallback = await supabase
@@ -573,11 +620,11 @@ export const entriesService = {
         .eq('is_active', true)
         .order('sort_order');
       if (fallback.error) throw fallback.error;
-      return pickTemplateRow(fallback.data, name);
+      return pickTemplateRowWithDisplayedFallback(fallback.data, name);
     };
     
     const findSubActivity = async (name, keyActivityId) => {
-      if (isBlankClassification(name)) return null;
+      if (shouldSkipClassificationLookup(name)) return null;
       let query = supabase
         .from('sub_activities')
         .select('id, name, key_activity_id, is_active, sort_order')
@@ -597,7 +644,7 @@ export const entriesService = {
       }
 
       if (error) throw error;
-      const scopedMatch = pickTemplateRow(data, name);
+      const scopedMatch = pickTemplateRowWithDisplayedFallback(data, name);
       if (scopedMatch || !keyActivityId) return scopedMatch;
 
       const fallback = await supabase
@@ -606,32 +653,42 @@ export const entriesService = {
         .eq('is_active', true)
         .order('sort_order');
       if (fallback.error) throw fallback.error;
-      return pickTemplateRow(fallback.data, name);
+      return pickTemplateRowWithDisplayedFallback(fallback.data, name);
     };
     
+    const classification = normalizeEntryClassificationValues(entryData);
     const unitId = entryData.unitId || await findUnitId(entryData.unit);
     const componentRow = entryData.componentId
       ? { id: entryData.componentId, name: entryData.component }
       : await findComponent(entryData.component);
     const componentId = componentRow?.id;
-    const subComponentRow = entryData.subComponentId
-      ? { id: entryData.subComponentId, name: entryData.subComponent }
-      : await findSubComponent(entryData.subComponent, componentId);
+    const subComponentRow =
+      entryData.subComponentId
+        ? { id: entryData.subComponentId, name: classification.subComponent }
+        : await findSubComponent(classification.subComponent, componentId);
     const subComponentId = subComponentRow?.id;
-    const keyActivityRow = entryData.keyActivityId
-      ? { id: entryData.keyActivityId, name: entryData.keyActivity }
-      : await findKeyActivity(entryData.keyActivity, subComponentId);
+    const keyActivityRow =
+      entryData.keyActivityId
+        ? { id: entryData.keyActivityId, name: classification.keyActivity }
+        : await findKeyActivity(classification.keyActivity, subComponentId);
     const keyActivityId = keyActivityRow?.id;
-    const subActivityRow = entryData.subActivityId
-      ? { id: entryData.subActivityId, name: entryData.subActivity }
-      : await findSubActivity(entryData.subActivity, keyActivityId);
+    const subActivityRow =
+      entryData.subActivityId
+        ? { id: entryData.subActivityId, name: classification.subActivity }
+        : await findSubActivity(classification.subActivity, keyActivityId);
     const subActivityId = subActivityRow?.id;
     
     if (!unitId) throw new Error(`Unit not found: ${entryData.unit}`);
     if (!componentId) throw new Error(`Component not found: ${entryData.component}`);
-    if (!isBlankClassification(entryData.subComponent) && !subComponentId) throw new Error(`Sub-component not found: ${entryData.subComponent}`);
-    if (!isBlankClassification(entryData.keyActivity) && !keyActivityId) throw new Error(`Key activity not found: ${entryData.keyActivity}`);
-    if (!isBlankClassification(entryData.subActivity) && !subActivityId) throw new Error(`Sub-activity not found: ${entryData.subActivity}`);
+    if (!isBlankClassification(classification.subComponent) && !subComponentId) {
+      throw new Error(`Sub-component not found: ${classification.subComponent}`);
+    }
+    if (!isBlankClassification(classification.keyActivity) && !keyActivityId) {
+      throw new Error(`Key activity not found: ${classification.keyActivity}`);
+    }
+    if (!isBlankClassification(classification.subActivity) && !subActivityId) {
+      throw new Error(`Sub-activity not found: ${classification.subActivity}`);
+    }
     
     // Insert entry
     const insertData = {
@@ -650,8 +707,11 @@ export const entriesService = {
 
     const insertDataWithClassification = {
       ...insertData,
-      no: entryData.no || '',
-      performance_indicator: entryData.performanceIndicator || '',
+      sub_component_text: classification.subComponent,
+      key_activity_text: classification.keyActivity,
+      no: classification.no,
+      performance_indicator: classification.performanceIndicator,
+      sub_activity_text: classification.subActivity,
     };
 
     let insertResponse = await supabase
@@ -663,7 +723,10 @@ export const entriesService = {
     if (
       insertResponse.error?.code === 'PGRST204' ||
       insertResponse.error?.message?.includes("'no'") ||
-      insertResponse.error?.message?.includes('performance_indicator')
+      insertResponse.error?.message?.includes('performance_indicator') ||
+      insertResponse.error?.message?.includes('sub_component_text') ||
+      insertResponse.error?.message?.includes('key_activity_text') ||
+      insertResponse.error?.message?.includes('sub_activity_text')
     ) {
       insertResponse = await supabase
         .from('entries')
@@ -676,6 +739,18 @@ export const entriesService = {
     
     if (error) {
       console.error('Error inserting entry:', error);
+      if (
+        error.message?.includes('violates not-null constraint') &&
+        (
+          error.message?.includes('sub_component_id') ||
+          error.message?.includes('key_activity_id') ||
+          error.message?.includes('sub_activity_id')
+        )
+      ) {
+        throw new Error(
+          'N/A entries need the optional hierarchy migration. Please run supabase/migrations/034_enforce_optional_na_entry_hierarchy.sql in Supabase, then try again.',
+        );
+      }
       throw new Error(`Failed to create entry: ${error.message}`);
     }
 
@@ -707,8 +782,11 @@ export const entriesService = {
       submittedAt: data.submission_date,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
-      no: entryData.no || '',
-      performanceIndicator: entryData.performanceIndicator || '',
+      subComponent: classification.subComponent,
+      keyActivity: classification.keyActivity,
+      no: classification.no,
+      performanceIndicator: classification.performanceIndicator,
+      subActivity: classification.subActivity,
       monthlyBreakdown,
       grandTotal,
     };
@@ -741,8 +819,41 @@ export const entriesService = {
     if (updates.adminComment !== undefined) dbUpdates.admin_comment = updates.adminComment;
     if (updates.reviewer_notes !== undefined) dbUpdates.admin_comment = updates.reviewer_notes;
     if (updates.admin_comment !== undefined) dbUpdates.admin_comment = updates.admin_comment;
-    if (updates.no !== undefined) dbUpdates.no = updates.no;
-    if (updates.performanceIndicator !== undefined) dbUpdates.performance_indicator = updates.performanceIndicator;
+    if (updates.subComponent !== undefined) {
+      const subComponentText = normalizeEntryClassificationText(updates.subComponent);
+      dbUpdates.sub_component_text = subComponentText;
+
+      if (isBlankClassification(subComponentText) && !updates.subComponentId && !updates.sub_component_id) {
+        dbUpdates.sub_component_id = null;
+        dbUpdates.key_activity_id = null;
+        dbUpdates.sub_activity_id = null;
+        dbUpdates.key_activity_text = 'N/A';
+        dbUpdates.no = 'N/A';
+        dbUpdates.performance_indicator = 'N/A';
+        dbUpdates.sub_activity_text = 'N/A';
+      }
+    }
+    if (updates.keyActivity !== undefined) {
+      const keyActivityText = normalizeEntryClassificationText(updates.keyActivity);
+      dbUpdates.key_activity_text = keyActivityText;
+
+      if (isBlankClassification(keyActivityText) && !updates.keyActivityId && !updates.key_activity_id) {
+        dbUpdates.key_activity_id = null;
+        dbUpdates.sub_activity_id = null;
+        dbUpdates.no = 'N/A';
+        dbUpdates.performance_indicator = 'N/A';
+        dbUpdates.sub_activity_text = 'N/A';
+      }
+    }
+    if (updates.no !== undefined) dbUpdates.no = normalizeEntryClassificationText(updates.no);
+    if (updates.performanceIndicator !== undefined) {
+      dbUpdates.performance_indicator = normalizeEntryClassificationText(
+        updates.performanceIndicator,
+      );
+    }
+    if (updates.subActivity !== undefined) {
+      dbUpdates.sub_activity_text = normalizeEntryClassificationText(updates.subActivity);
+    }
     
     if (Object.keys(dbUpdates).length > 0) {
       let response = await supabase
@@ -754,14 +865,20 @@ export const entriesService = {
         response.error?.code === 'PGRST204' ||
         response.error?.message?.includes("'no'") ||
         response.error?.message?.includes('performance_indicator') ||
+        response.error?.message?.includes('sub_component_text') ||
+        response.error?.message?.includes('key_activity_text') ||
+        response.error?.message?.includes('sub_activity_text') ||
         response.error?.message?.includes('admin_comment') ||
         response.error?.message?.includes('reviewer_id')
       ) {
         const shouldUseReviewerNotes =
           response.error?.message?.includes('admin_comment');
         const fallbackUpdates = { ...dbUpdates };
+        delete fallbackUpdates.sub_component_text;
+        delete fallbackUpdates.key_activity_text;
         delete fallbackUpdates.no;
         delete fallbackUpdates.performance_indicator;
+        delete fallbackUpdates.sub_activity_text;
         delete fallbackUpdates.reviewer_id;
         if (shouldUseReviewerNotes && fallbackUpdates.admin_comment !== undefined) {
           fallbackUpdates.reviewer_notes = fallbackUpdates.admin_comment;

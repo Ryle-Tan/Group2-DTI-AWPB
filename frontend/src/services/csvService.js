@@ -56,6 +56,8 @@ const YEARLY_BACKUP_STATUS_SECTIONS = [
   { label: 'Rejected', statuses: ['rejected'] },
 ];
 
+const FALLBACK_CLASSIFICATION_VALUE = 'N/A';
+
 const IMPORTABLE_STATUS_MAP = new Map([
   ['approved', 'Approved'],
   ['pending', 'Pending Review'],
@@ -120,6 +122,38 @@ function normalizeHeader(value) {
 
 function normalizeText(value) {
   return String(value ?? '').trim();
+}
+
+function getFirstTextValue(...values) {
+  for (const value of values) {
+    const text = normalizeText(value);
+    if (text) return text;
+  }
+  return '';
+}
+
+function normalizeOptionalClassification(value) {
+  return getFirstTextValue(value) || FALLBACK_CLASSIFICATION_VALUE;
+}
+
+function normalizeImportedClassification(row) {
+  return {
+    subComponent: normalizeOptionalClassification(
+      getCell(row, ['Sub Component', 'Sub-Component']),
+    ),
+    keyActivity: normalizeOptionalClassification(getCell(row, ['Key Activity'])),
+    no: normalizeOptionalClassification(getCell(row, ['Activity No.', 'Activity No', 'No'])),
+    performanceIndicator: normalizeOptionalClassification(
+      getCell(row, ['Performance Indicator']),
+    ),
+    subActivity: normalizeOptionalClassification(
+      getCell(row, ['Sub Activity', 'Sub-Activity']),
+    ),
+  };
+}
+
+function getDisplayClassificationValue(...values) {
+  return getFirstTextValue(...values) || FALLBACK_CLASSIFICATION_VALUE;
 }
 
 function getTemplatePrefix(value) {
@@ -350,6 +384,7 @@ function transformImportedRowsToEntries(rows, fallbackStatus = 'Pending Review')
     const unitCost = getImportedUnitCost(row);
     const monthlyBreakdown = getImportedMonthlyBreakdown(row, unitCost);
     const status = getImportedStatus(row, fallbackStatus);
+    const classification = normalizeImportedClassification(row);
 
     return {
       sourceRowNumber: row.__rowNumber,
@@ -359,11 +394,11 @@ function transformImportedRowsToEntries(rows, fallbackStatus = 'Pending Review')
         String(new Date().getFullYear()),
       unit: normalizeUnitCode(getCell(row, ['Unit'])),
       component: normalizeText(getCell(row, ['Component'])),
-      subComponent: normalizeText(getCell(row, ['Sub Component', 'Sub-Component'])),
-      keyActivity: normalizeText(getCell(row, ['Key Activity'])),
-      no: normalizeText(getCell(row, ['Activity No.', 'Activity No', 'No'])),
-      performanceIndicator: normalizeText(getCell(row, ['Performance Indicator'])),
-      subActivity: normalizeText(getCell(row, ['Sub Activity', 'Sub-Activity'])),
+      subComponent: classification.subComponent,
+      keyActivity: classification.keyActivity,
+      no: classification.no,
+      performanceIndicator: classification.performanceIndicator,
+      subActivity: classification.subActivity,
       titleOfActivities: normalizeText(getCell(row, ['Title of Activities'])),
       unitCost,
       monthlyBreakdown,
@@ -408,15 +443,37 @@ function buildDuplicateParts(entry) {
     planningYear: normalizeDuplicateText(entry.planningYear || entry.planning_year),
     unit: normalizeUnitCode(entry.unit || entry.units?.code || entry.units?.name || ''),
     component: normalizeDuplicateClassification(entry.component || entry.components?.name),
-    subComponent: normalizeDuplicateClassification(entry.subComponent || entry.sub_components?.name),
-    keyActivity: normalizeDuplicateClassification(entry.keyActivity || entry.key_activities?.name),
-    no: normalizeDuplicateText(entry.no || entry.activity_no),
-    performanceIndicator: normalizeDuplicateText(
-      entry.performanceIndicator ||
-        entry.performance_indicator ||
-        entry.key_activities?.performance_indicator,
+    subComponent: normalizeDuplicateClassification(
+      getDisplayClassificationValue(
+        entry.subComponent,
+        entry.sub_component_text,
+        entry.sub_components?.name,
+      ),
     ),
-    subActivity: normalizeDuplicateClassification(entry.subActivity || entry.sub_activities?.name),
+    keyActivity: normalizeDuplicateClassification(
+      getDisplayClassificationValue(
+        entry.keyActivity,
+        entry.key_activity_text,
+        entry.key_activities?.name,
+      ),
+    ),
+    no: normalizeDuplicateText(
+      getDisplayClassificationValue(entry.no, entry.activity_no),
+    ),
+    performanceIndicator: normalizeDuplicateText(
+      getDisplayClassificationValue(
+        entry.performanceIndicator,
+        entry.performance_indicator,
+        entry.key_activities?.performance_indicator,
+      ),
+    ),
+    subActivity: normalizeDuplicateClassification(
+      getDisplayClassificationValue(
+        entry.subActivity,
+        entry.sub_activity_text,
+        entry.sub_activities?.name,
+      ),
+    ),
     title: normalizeDuplicateText(entry.titleOfActivities || entry.title_of_activities),
     unitCost: normalizeDuplicateMoney(entry.unitCost ?? entry.unit_cost ?? 0),
     monthlyAmounts,
@@ -647,15 +704,29 @@ export const csvExportService = {
         return {
           unit: normalizeUnitCode(row.units?.code || row.units?.name || ''),
           component: row.components?.name || '',
-          subComponent: row.sub_components?.name || '',
-          keyActivity: row.key_activities?.name || '',
-          no: row.no || row.activity_no || row.key_activities?.activity_no || '',
+          subComponent: getDisplayClassificationValue(
+            row.sub_component_text,
+            row.sub_components?.name,
+          ),
+          keyActivity: getDisplayClassificationValue(
+            row.key_activity_text,
+            row.key_activities?.name,
+          ),
+          no: getDisplayClassificationValue(
+            row.no,
+            row.activity_no,
+            row.key_activities?.activity_no,
+          ),
           performanceIndicator:
-            row.performance_indicator ||
-            row.performanceIndicator ||
-            row.key_activities?.performance_indicator ||
-            '',
-          subActivity: row.sub_activities?.name || '',
+            getDisplayClassificationValue(
+              row.performance_indicator,
+              row.performanceIndicator,
+              row.key_activities?.performance_indicator,
+            ),
+          subActivity: getDisplayClassificationValue(
+            row.sub_activity_text,
+            row.sub_activities?.name,
+          ),
           titleOfActivities: row.title_of_activities,
           unitCost: Number(row.unit_cost || 0),
           status: row.status || 'Approved',
@@ -693,11 +764,11 @@ export const csvExportService = {
       'Status': formatStatusForCSV(entry.status || 'Approved'),
       'Unit': entry.unit,
       'Component': entry.component,
-      'Sub Component': entry.subComponent,
-      'Key Activity': entry.keyActivity,
-      'Activity No.': entry.no,
-      'Performance Indicator': entry.performanceIndicator,
-      'Sub Activity': entry.subActivity,
+      'Sub Component': getDisplayClassificationValue(entry.subComponent),
+      'Key Activity': getDisplayClassificationValue(entry.keyActivity),
+      'Activity No.': getDisplayClassificationValue(entry.no),
+      'Performance Indicator': getDisplayClassificationValue(entry.performanceIndicator),
+      'Sub Activity': getDisplayClassificationValue(entry.subActivity),
       'Title of Activities': entry.titleOfActivities,
       'Unit Cost': entry.unitCost,
       ...entry.monthlyBreakdown,
@@ -724,11 +795,11 @@ export const csvExportService = {
         'Reviewer Full Name': entry.reviewerFullName || entry.reviewerDisplayName || '',
         'Unit': entry.unit || '',
         'Component': entry.component || '',
-        'Sub Component': entry.subComponent || '',
-        'Key Activity': entry.keyActivity || '',
-        'Activity No.': entry.no || '',
-        'Performance Indicator': entry.performanceIndicator || '',
-        'Sub Activity': entry.subActivity || '',
+        'Sub Component': getDisplayClassificationValue(entry.subComponent),
+        'Key Activity': getDisplayClassificationValue(entry.keyActivity),
+        'Activity No.': getDisplayClassificationValue(entry.no),
+        'Performance Indicator': getDisplayClassificationValue(entry.performanceIndicator),
+        'Sub Activity': getDisplayClassificationValue(entry.subActivity),
         'Title of Activities': entry.titleOfActivities || '',
         'Unit Cost': Number(entry.unitCost || 0),
         ...monthlyColumns,

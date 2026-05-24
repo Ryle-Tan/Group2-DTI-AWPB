@@ -73,7 +73,7 @@ The AWPB System is a web-based application that allows encoders to submit annual
 
 | Issue | Description | Impact | Suggested Fix |
 |-------|-------------|--------|----------------|
-| Supabase Migrations | Confirm production Supabase has all migrations through `032_allow_retry_incomplete_archive_cleanup.sql` applied | Missing migrations can cause auth, RLS, template, archive cleanup, or review workflow issues | Run migrations in order or use `supabase db push` |
+| Supabase Migrations | Confirm production Supabase has all migrations through `034_enforce_optional_na_entry_hierarchy.sql` applied | Missing migrations can cause auth, RLS, template, archive cleanup, CSV backup/import, or review workflow issues | Run migrations in order or use `supabase db push` |
 | Password Reset | Forgot/reset password flow depends on Supabase email and redirect settings | Reset links may fail if Site URL or Redirect URLs are wrong | Test with a real account and deployed URL |
 | User Acceptance Testing | Core workflows need real-user validation | Edge cases may only appear with actual DTI data and roles | Test login, submit, return, resubmit, approve, reject, delete pending, and account deactivation |
 
