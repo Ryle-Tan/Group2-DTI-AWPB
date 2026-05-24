@@ -51,10 +51,21 @@ const MONTH_SHORT_NAMES = {
 
 const YEARLY_BACKUP_STATUS_SECTIONS = [
   { label: 'Approved', statuses: ['approved'] },
-  { label: 'Pending Review', statuses: ['pending review', 'pending'] },
+  { label: 'Pending', statuses: ['pending review', 'pending'] },
   { label: 'Returned', statuses: ['returned', 'return'] },
   { label: 'Rejected', statuses: ['rejected'] },
 ];
+
+const IMPORTABLE_STATUS_MAP = new Map([
+  ['approved', 'Approved'],
+  ['pending', 'Pending Review'],
+  ['pending review', 'Pending Review'],
+  ['returned', 'Returned'],
+  ['return', 'Returned'],
+  ['rejected', 'Rejected'],
+  ['draft', 'draft'],
+  ['submitted', 'submitted'],
+]);
 
 function normalizeMonthKey(value) {
   const normalized = String(value || '').trim().toLowerCase();
@@ -98,6 +109,17 @@ function normalizeText(value) {
   return String(value ?? '').trim();
 }
 
+function normalizeEntryStatus(value, fallback = 'Pending Review') {
+  const statusKey = normalizeText(value).toLowerCase();
+  return IMPORTABLE_STATUS_MAP.get(statusKey) || fallback;
+}
+
+function formatStatusForCSV(status) {
+  return normalizeEntryStatus(status, normalizeText(status)) === 'Pending Review'
+    ? 'Pending'
+    : normalizeText(status);
+}
+
 function parseNumber(value) {
   if (value === null || value === undefined || value === '') return 0;
   const normalized = String(value)
@@ -106,6 +128,15 @@ function parseNumber(value) {
     .replace(/^\((.*)\)$/, '-$1');
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeDuplicateText(value) {
+  return normalizeText(value).replace(/\s+/g, ' ').toLowerCase();
+}
+
+function normalizeDuplicateNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed.toFixed(4) : '0.0000';
 }
 
 function parseCSVRows(csvContent) {
@@ -280,10 +311,20 @@ function getImportedUnitCost(row) {
   return hasMonthlyAmounts ? 1 : 0;
 }
 
-function transformImportedRowsToEntries(rows) {
+function getImportedStatus(row, fallbackStatus = 'Pending Review') {
+  const statusCell = getCell(row, ['Status', 'Entry Status', 'Review Status']);
+  if (normalizeText(statusCell)) {
+    return normalizeEntryStatus(statusCell, fallbackStatus);
+  }
+
+  return normalizeEntryStatus(row.__section, fallbackStatus);
+}
+
+function transformImportedRowsToEntries(rows, fallbackStatus = 'Pending Review') {
   return rows.map((row) => {
     const unitCost = getImportedUnitCost(row);
     const monthlyBreakdown = getImportedMonthlyBreakdown(row, unitCost);
+    const status = getImportedStatus(row, fallbackStatus);
 
     return {
       sourceRowNumber: row.__rowNumber,
@@ -301,7 +342,7 @@ function transformImportedRowsToEntries(rows) {
       unitCost,
       monthlyBreakdown,
       grandTotal: monthlyBreakdown.reduce((sum, month) => sum + month.amount, 0),
-      status: 'Pending Review',
+      status,
       adminComment: '',
       submittedAt: new Date().toISOString(),
     };
@@ -329,6 +370,83 @@ function validateImportedEntries(entries) {
   });
 
   return errors;
+}
+
+function buildDuplicateKey(entry) {
+  const monthlyTargets = MONTHS_LIST.map((monthKey) => {
+    const breakdown = getEntryMonthBreakdown(entry, monthKey);
+    return normalizeDuplicateNumber(breakdown.target || 0);
+  });
+
+  return JSON.stringify([
+    normalizeDuplicateText(entry.planningYear || entry.planning_year),
+    normalizeUnitCode(entry.unit || entry.units?.code || entry.units?.name || ''),
+    normalizeDuplicateText(entry.component || entry.components?.name),
+    normalizeDuplicateText(entry.subComponent || entry.sub_components?.name),
+    normalizeDuplicateText(entry.keyActivity || entry.key_activities?.name),
+    normalizeDuplicateText(entry.no || entry.activity_no),
+    normalizeDuplicateText(
+      entry.performanceIndicator ||
+        entry.performance_indicator ||
+        entry.key_activities?.performance_indicator,
+    ),
+    normalizeDuplicateText(entry.subActivity || entry.sub_activities?.name),
+    normalizeDuplicateText(entry.titleOfActivities || entry.title_of_activities),
+    normalizeDuplicateNumber(entry.unitCost ?? entry.unit_cost ?? 0),
+    ...monthlyTargets,
+  ]);
+}
+
+function isApprovedStatus(status) {
+  return normalizeText(status).toLowerCase() === 'approved';
+}
+
+function isReviewOutcomeStatus(status) {
+  const statusKey = normalizeText(status).toLowerCase();
+  return statusKey === 'returned' || statusKey === 'rejected';
+}
+
+async function createImportedEntry(entryData) {
+  if (isApprovedStatus(entryData.status)) {
+    const createdEntry = await entriesService.create({
+      ...entryData,
+      status: 'Pending Review',
+    });
+
+    const { error } = await supabase.rpc('admin_approve_entry', {
+      p_entry_id: createdEntry.id,
+      p_note: 'Imported from CSV',
+    });
+
+    if (error) {
+      await entriesService.delete(createdEntry.id).catch(() => null);
+      throw error;
+    }
+
+    return entriesService.getById(createdEntry.id);
+  }
+
+  if (isReviewOutcomeStatus(entryData.status)) {
+    const createdEntry = await entriesService.create({
+      ...entryData,
+      status: 'Pending Review',
+    });
+
+    const { error } = await supabase.rpc('admin_set_entry_review_status', {
+      p_entry_id: createdEntry.id,
+      p_status: entryData.status,
+      p_note: 'Imported from CSV',
+    });
+
+    if (error) {
+      await entriesService.delete(createdEntry.id).catch(() => null);
+      throw error;
+    }
+
+    return entriesService.getById(createdEntry.id);
+  }
+
+  return entriesService.create(entryData, { preserveStatus: true });
 }
 
 function getStatusKey(value) {
@@ -419,6 +537,7 @@ export const csvExportService = {
           subActivity: row.sub_activities?.name || '',
           titleOfActivities: row.title_of_activities,
           unitCost: Number(row.unit_cost || 0),
+          status: row.status || 'Approved',
           planningYear: row.planning_year,
           monthlyTargets,
           monthlyBreakdown,
@@ -450,6 +569,7 @@ export const csvExportService = {
   transformEntriesForCSV(entries) {
     return entries.map(entry => ({
       'Planning Year': entry.planningYear,
+      'Status': formatStatusForCSV(entry.status || 'Approved'),
       'Unit': entry.unit,
       'Component': entry.component,
       'Sub Component': entry.subComponent,
@@ -482,6 +602,7 @@ export const csvExportService = {
 
       return {
         'Archive Year': year,
+        'Status': formatStatusForCSV(entry.status || ''),
         'Entry ID': entry.id || '',
         'Owner Full Name': entry.ownerFullName || entry.ownerDisplayName || '',
         'Reviewer Full Name': entry.reviewerFullName || entry.reviewerDisplayName || '',
@@ -578,6 +699,7 @@ export const csvExportService = {
 
     const totalsRow = {
       'Planning Year': '',
+      'Status': '',
       'Unit': 'TOTAL',
       'Component': '',
       'Sub Component': '',
@@ -728,7 +850,7 @@ export const csvExportService = {
 };
 
 export const csvImportService = {
-  async importEntriesFromCSV(file) {
+  async importEntriesFromCSV(file, existingEntries = []) {
     if (!file) throw new Error('Please choose a CSV file to import.');
 
     const csvContent = await file.text();
@@ -738,7 +860,10 @@ export const csvImportService = {
       throw new Error('No importable AWPB entry rows were found in the CSV file.');
     }
 
-    const importedEntries = transformImportedRowsToEntries(rows);
+    const fallbackStatus = /approved_entries_export/i.test(file.name || '')
+      ? 'Approved'
+      : 'Pending Review';
+    const importedEntries = transformImportedRowsToEntries(rows, fallbackStatus);
     const validationErrors = validateImportedEntries(importedEntries);
 
     if (validationErrors.length > 0) {
@@ -747,12 +872,28 @@ export const csvImportService = {
 
     const createdEntries = [];
     const failedRows = [];
+    const skippedRows = [];
+    const duplicateKeys = new Set(
+      (existingEntries || []).map((entry) => buildDuplicateKey(entry)),
+    );
 
     for (const entry of importedEntries) {
+      const duplicateKey = buildDuplicateKey(entry);
+
+      if (duplicateKeys.has(duplicateKey)) {
+        skippedRows.push({
+          rowNumber: entry.sourceRowNumber,
+          message: 'Duplicate entry skipped.',
+        });
+        continue;
+      }
+
+      duplicateKeys.add(duplicateKey);
+
       try {
         const entryData = { ...entry };
         delete entryData.sourceRowNumber;
-        const createdEntry = await entriesService.create(entryData);
+        const createdEntry = await createImportedEntry(entryData);
         createdEntries.push(createdEntry);
       } catch (error) {
         failedRows.push({
@@ -762,7 +903,7 @@ export const csvImportService = {
       }
     }
 
-    if (createdEntries.length === 0 && failedRows.length > 0) {
+    if (createdEntries.length === 0 && skippedRows.length === 0 && failedRows.length > 0) {
       throw new Error(
         `Import failed. Row ${failedRows[0].rowNumber}: ${failedRows[0].message}`,
       );
@@ -770,6 +911,7 @@ export const csvImportService = {
 
     return {
       importedCount: createdEntries.length,
+      skippedRows,
       failedRows,
       createdEntries,
     };

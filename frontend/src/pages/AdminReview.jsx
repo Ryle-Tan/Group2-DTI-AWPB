@@ -404,18 +404,22 @@ export default function AdminReview({
     setCsvImporting(true);
     try {
       const { csvImportService } = await import("../services/csvService");
-      const result = await csvImportService.importEntriesFromCSV(file);
+      const result = await csvImportService.importEntriesFromCSV(file, entries);
       onImportEntries?.(result.createdEntries);
 
+      const skippedText =
+        result.skippedRows.length > 0
+          ? ` Skipped ${result.skippedRows.length} duplicate row${result.skippedRows.length === 1 ? "" : "s"}.`
+          : "";
       const failedText =
         result.failedRows.length > 0
           ? ` ${result.failedRows.length} row${result.failedRows.length === 1 ? "" : "s"} could not be imported.`
           : "";
 
       onShowToast?.({
-        title: "CSV import successful",
-        description: `Imported ${result.importedCount} entr${result.importedCount === 1 ? "y" : "ies"} as Pending Review.${failedText}`,
-        type: result.failedRows.length > 0 ? "info" : "success",
+        title: result.importedCount > 0 ? "CSV import complete" : "No new entries imported",
+        description: `Imported ${result.importedCount} entr${result.importedCount === 1 ? "y" : "ies"} with their CSV status.${skippedText}${failedText}`,
+        type: result.failedRows.length > 0 || result.skippedRows.length > 0 ? "info" : "success",
       });
     } catch (error) {
       onShowToast?.({

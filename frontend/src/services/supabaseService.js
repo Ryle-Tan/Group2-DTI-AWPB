@@ -468,9 +468,12 @@ export const entriesService = {
     return this.transformEntryWithJoins(data, monthlyBreakdown);
   },
 
-  async create(entryData) {
+  async create(entryData, options = {}) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('You must be signed in to submit an entry.');
+    const status = options.preserveStatus
+      ? entryData.status || 'Pending Review'
+      : 'Pending Review';
     
     const findUnitId = async (identifier) => {
       const lookupValues = getUnitLookupValues(identifier);
@@ -552,7 +555,7 @@ export const entriesService = {
       sub_activity_id: subActivityId || null,
       title_of_activities: entryData.titleOfActivities,
       unit_cost: entryData.unitCost || 0,
-      status: 'Pending Review',
+      status,
       submission_date: new Date().toISOString(),
     };
 
