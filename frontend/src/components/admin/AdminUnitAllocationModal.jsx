@@ -34,6 +34,7 @@ export default function AdminUnitAllocationModal({
   onSave,
   onTypeChange,
   estimate = 0,
+  planningYear,
   saving = false,
   unit,
 }) {
@@ -46,9 +47,11 @@ export default function AdminUnitAllocationModal({
               <Wallet className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-xl font-semibold text-white">Edit Planning Estimate - {unit}</h3>
+              <h3 className="text-xl font-semibold text-white">
+                Edit Planning Estimate - {unit} {planningYear ? `(${planningYear})` : ""}
+              </h3>
               <p className="mt-1 text-sm text-white/75">
-                Adjust this unit's estimated AWPB budget for planning.
+                Adjust this unit's estimated AWPB budget for this planning year.
               </p>
             </div>
           </div>
@@ -65,7 +68,9 @@ export default function AdminUnitAllocationModal({
         <div className="border-b border-slate-200/80 bg-white px-6 py-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500">Current Planning Estimate</p>
+              <p className="text-sm font-medium text-slate-500">
+                Current {planningYear || ""} Planning Estimate
+              </p>
               <p className="mt-1 text-3xl font-bold text-slate-900">
                 ₱{formatCurrency(estimate)}
               </p>
@@ -130,8 +135,8 @@ export default function AdminUnitAllocationModal({
               type="text"
               placeholder={
                 adjustmentType === "ADDED"
-                  ? `Additional planning estimate for ${unit}`
-                  : `Planning estimate reduction for ${unit}`
+                  ? `Additional ${planningYear || ""} planning estimate for ${unit}`
+                  : `${planningYear || ""} planning estimate reduction for ${unit}`
               }
               value={description}
               onChange={(event) => onDescriptionChange?.(event.target.value)}

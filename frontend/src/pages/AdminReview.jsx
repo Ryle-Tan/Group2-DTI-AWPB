@@ -87,6 +87,8 @@ function isApprovedStatus(status) {
 const gradientButtonClass =
   "border-0 bg-gradient-to-r from-[#1f2f74] to-[#2a4694] text-white shadow-[0_6px_16px_rgba(31,47,116,0.28)] transition-all duration-200 hover:from-[#19265f] hover:to-[#213a80] hover:shadow-[0_10px_24px_rgba(31,47,116,0.38)]";
 
+const CURRENT_YEAR = String(new Date().getFullYear());
+
 export default function AdminReview({
   currentUser,
   entries: entriesProp = [],
@@ -101,7 +103,7 @@ export default function AdminReview({
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [unitFilter, setUnitFilter] = useState("all");
-  const [yearFilter, setYearFilter] = useState("all");
+  const [yearFilter, setYearFilter] = useState(CURRENT_YEAR);
   const [totalBudget, setTotalBudget] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [budgetDataStatus, setBudgetDataStatus] = useState("loading");
@@ -128,8 +130,10 @@ export default function AdminReview({
   const currentAdminId = currentUser?.id || null;
 
   const approvedEntries = useMemo(() => {
-    return entries.filter((e) => isApprovedStatus(e.status));
-  }, [entries]);
+    return entries.filter(
+      (e) => isApprovedStatus(e.status) && String(e.planningYear) === yearFilter,
+    );
+  }, [entries, yearFilter]);
 
   const approvedBudgetByUnit = useMemo(() => {
     const totals = Object.fromEntries(UNITS.map((unit) => [unit, 0]));
@@ -195,19 +199,29 @@ export default function AdminReview({
     );
   }, [UNITS, approvedEntries]);
 
-  const availableUnits = useMemo(() => {
-    return [...new Set(entries.map((entry) => normalizeUnitCode(entry.unit)).filter(Boolean))].sort();
+  const availableYears = useMemo(() => {
+    return [
+      ...new Set([
+        CURRENT_YEAR,
+        ...entries.map((entry) => entry.planningYear).filter(Boolean).map(String),
+      ]),
+    ].sort((a, b) => Number(b) - Number(a) || String(b).localeCompare(String(a)));
   }, [entries]);
 
-  const availableYears = useMemo(() => {
-    return [...new Set(entries.map((entry) => entry.planningYear).filter(Boolean))]
-      .sort((a, b) => String(b).localeCompare(String(a)));
-  }, [entries]);
+  const entriesForSelectedYear = useMemo(() => {
+    return entries.filter((entry) => String(entry.planningYear) === yearFilter);
+  }, [entries, yearFilter]);
+
+  const availableUnits = useMemo(() => {
+    return [
+      ...new Set(entriesForSelectedYear.map((entry) => normalizeUnitCode(entry.unit)).filter(Boolean)),
+    ].sort();
+  }, [entriesForSelectedYear]);
 
   const filteredEntries = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    return entries.filter((entry) => {
+    return entriesForSelectedYear.filter((entry) => {
       const matchesSearch =
         normalizedSearch === "" ||
         entry.titleOfActivities?.toLowerCase().includes(normalizedSearch) ||
@@ -220,12 +234,15 @@ export default function AdminReview({
 
       const matchesUnit = unitFilter === "all" || normalizeUnitCode(entry.unit) === unitFilter;
 
-      const matchesYear =
-        yearFilter === "all" || String(entry.planningYear) === yearFilter;
-
-      return matchesSearch && matchesStatus && matchesUnit && matchesYear;
+      return matchesSearch && matchesStatus && matchesUnit;
     });
-  }, [entries, searchTerm, statusFilter, unitFilter, yearFilter]);
+  }, [entriesForSelectedYear, searchTerm, statusFilter, unitFilter]);
+
+  useEffect(() => {
+    if (unitFilter !== "all" && !availableUnits.includes(unitFilter)) {
+      setUnitFilter("all");
+    }
+  }, [availableUnits, unitFilter]);
 
   const replaceEntryFromDatabase = async (entryId) => {
     const updatedEntry = await entriesService.getById(entryId);
@@ -250,6 +267,7 @@ export default function AdminReview({
       ...transaction,
       actor_id: currentAdminId,
       actor_name: currentUser?.fullName || currentUser?.username || "",
+      planning_year: Number(yearFilter),
     };
 
     const { error } = await supabase.from("budget_transactions").insert(payload);
@@ -353,10 +371,10 @@ export default function AdminReview({
     setCsvExporting(true);
     try {
       const { csvExportService } = await import("../services/csvService");
-      const result = await csvExportService.exportApprovedEntriesToCSV();
+      const result = await csvExportService.exportApprovedEntriesToCSV(yearFilter);
       onShowToast?.({
         title: "CSV export successful",
-        description: `Exported ${result.recordCount} approved entries to ${result.filename}`,
+        description: `Exported ${result.recordCount} approved ${yearFilter} entries to ${result.filename}`,
         type: "success",
       });
     } catch (error) {
@@ -461,7 +479,6 @@ export default function AdminReview({
     setSearchTerm("");
     setStatusFilter("all");
     setUnitFilter("all");
-    setYearFilter("all");
   };
 
   const handleDelete = async () => {
@@ -511,7 +528,7 @@ export default function AdminReview({
   const loadPlanningData = useCallback(async () => {
     setBudgetDataStatus(budgetDataReadyRef.current ? "refreshing" : "loading");
     try {
-      const rows = await budgetPlanningService.getUnitStats();
+      const rows = await budgetPlanningService.getUnitStats(yearFilter);
       const budgets = Object.fromEntries(UNITS.map((unit) => [unit, 0]));
 
       rows.forEach((row) => {
@@ -526,7 +543,7 @@ export default function AdminReview({
       console.error("Failed to load planning stats:", err);
       setBudgetDataStatus(budgetDataReadyRef.current ? "ready" : "unavailable");
     }
-  }, [UNITS]);
+  }, [UNITS, yearFilter]);
 
   const loadBudgetRecords = useCallback(async () => {
     if (transactionsStatus === "loading") return;
@@ -536,12 +553,14 @@ export default function AdminReview({
       let {data: txData, error: txError} = await supabase
         .from("budget_transactions")
         .select("*, actor:profiles!actor_id(username, full_name)")
+        .eq("planning_year", Number(yearFilter))
         .order("created_at", { ascending: false });
 
       if (txError?.message?.includes("actor_id") || txError?.message?.includes("relationship")) {
         const fallback = await supabase
           .from("budget_transactions")
           .select("*")
+          .eq("planning_year", Number(yearFilter))
           .order("created_at", { ascending: false });
         txData = fallback.data;
         txError = fallback.error;
@@ -584,7 +603,7 @@ export default function AdminReview({
       console.error("Failed to load planning budget records:", err);
       setTransactionsStatus("unavailable");
     }
-  }, [transactionsStatus]);
+  }, [transactionsStatus, yearFilter]);
 
   const handleOpenHistoryModal = useCallback(() => {
     setShowHistoryModal(true);
@@ -592,6 +611,12 @@ export default function AdminReview({
       void loadBudgetRecords();
     }
   }, [loadBudgetRecords, transactionsStatus]);
+
+  useEffect(() => {
+    setTransactions([]);
+    setTransactionsStatus("idle");
+  }, [yearFilter]);
+
   const closeUnitAllocationModal = () => {
     setActiveUnitBudgetModal(null);
     setUnitBudgetAmount("");
@@ -630,8 +655,8 @@ export default function AdminReview({
         description:
           unitBudgetDesc ||
           (unitBudgetAdjustmentType === "ADDED"
-            ? `Additional planning estimate for ${unit}`
-            : `Planning estimate reduction for ${unit}`),
+            ? `Additional ${yearFilter} planning estimate for ${unit}`
+            : `${yearFilter} planning estimate reduction for ${unit}`),
         unit: normalizeUnitCode(unit),
       });
       invalidateBudgetRecords();
@@ -674,23 +699,43 @@ export default function AdminReview({
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p className="text-2xl font-bold tracking-tight text-white">
-                Planning Summary
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-2xl font-bold tracking-tight text-white">
+                    Planning Summary
+                  </p>
+                  <Badge className="border border-white/25 bg-white/18 px-2.5 py-1 text-sm font-semibold text-white">
+                    {yearFilter}
+                  </Badge>
+                </div>
                 <p className="mt-0.5 max-w-3xl text-sm text-white/85">
-                  Total AWPB planning view across all units.
+                  Planning year {yearFilter} across all units.
                 </p>
               </div>
 
-              <Button
-                onClick={handleOpenHistoryModal}
-                disabled={isBudgetDataLoading}
-                variant="outline"
-                className="w-fit rounded-xl border-white/35 bg-white/10 text-white shadow-sm hover:bg-white/20 hover:text-white"
-              >
-                <History className="mr-2 h-4 w-4" />
-                View Records
-              </Button>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Select value={yearFilter} onValueChange={setYearFilter}>
+                  <SelectTrigger className="w-full min-w-[150px] border-white/35 bg-white/10 text-white shadow-sm sm:w-[150px]">
+                    <SelectValue placeholder="Planning Year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableYears.map((year) => (
+                      <SelectItem key={year} value={String(year)}>
+                        {year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  onClick={handleOpenHistoryModal}
+                  disabled={isBudgetDataLoading}
+                  variant="outline"
+                  className="w-fit rounded-xl border-white/35 bg-white/10 text-white shadow-sm hover:bg-white/20 hover:text-white"
+                >
+                  <History className="mr-2 h-4 w-4" />
+                  View Records
+                </Button>
+              </div>
             </div>
 
             <div className="grid gap-2.5 md:grid-cols-3">
@@ -721,6 +766,7 @@ export default function AdminReview({
   <AdminBudgetRecordsModal
     approvedEntries={approvedEntries}
     onClose={() => setShowHistoryModal(false)}
+    planningYear={yearFilter}
     transactions={transactions}
   />
 )}
@@ -832,6 +878,7 @@ export default function AdminReview({
           onSave={handleSaveUnitAllocation}
           onTypeChange={setUnitBudgetAdjustmentType}
           estimate={unitAllocationStats[activeUnitBudgetModal]?.estimate || 0}
+          planningYear={yearFilter}
           saving={unitAllocationSaving}
           unit={activeUnitBudgetModal}
         />
@@ -841,6 +888,7 @@ export default function AdminReview({
         <AdminUnitRecordsModal
           entries={approvedEntriesByUnit[activeUnitHistoryModal] || []}
           onClose={() => setActiveUnitHistoryModal(null)}
+          planningYear={yearFilter}
           totalApproved={unitAllocationStats[activeUnitHistoryModal]?.approved || 0}
           unit={activeUnitHistoryModal}
         />
@@ -852,14 +900,14 @@ export default function AdminReview({
             <div>
               <CardTitle className="text-2xl">All Submitted Entries</CardTitle>
               <p className="mt-1 text-sm text-slate-500">
-                Search and filter submissions for admin review.
+                Search and filter {yearFilter} submissions for admin review.
               </p>
               <p className="mt-6 text-sm text-slate-500">
-                Showing {filteredEntries.length} of {entries.length} entries
+                Showing {filteredEntries.length} of {entriesForSelectedYear.length} {yearFilter} entries
               </p>
             </div>
 
-            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[280px_125px_115px_115px_auto_auto] xl:w-auto xl:justify-start">
+            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[280px_125px_115px_auto_auto] xl:w-auto xl:justify-start">
               <div className="relative min-w-0">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
@@ -897,28 +945,15 @@ export default function AdminReview({
                 </SelectContent>
               </Select>
 
-              <Select value={yearFilter} onValueChange={setYearFilter}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="All Years" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Years</SelectItem>
-                  {availableYears.map((year) => (
-                    <SelectItem key={year} value={String(year)}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
               <Button onClick={clearFilters} className={`whitespace-nowrap ${gradientButtonClass}`}>
-                Reset
+                Reset Filters
               </Button>
               <Button
                 onClick={handleExportApprovedEntriesToCSV}
                 disabled={csvExporting}
                 className={`whitespace-nowrap disabled:cursor-wait disabled:opacity-75 ${gradientButtonClass}`}
               >
-                {csvExporting ? "Exporting CSV..." : "Export to CSV"}
+                {csvExporting ? "Exporting CSV..." : `Export ${yearFilter} CSV`}
               </Button>
             </div>
           </div>

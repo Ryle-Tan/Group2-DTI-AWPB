@@ -6,6 +6,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Trash2,
   UserPlus,
   UserX,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -73,6 +75,10 @@ const ACCOUNT_LOG_META = {
   account_activated: {
     label: "Activated",
     className: "border-green-200 bg-green-50 text-green-700",
+  },
+  account_deleted: {
+    label: "Deleted",
+    className: "border-rose-200 bg-rose-50 text-rose-700",
   },
   password_changed: {
     label: "Password Changed",
@@ -188,6 +194,10 @@ function renderAccountLogDetails(log) {
       details.created_account.role === "admin" ? "Admin" : "Account Officer";
     const status = formatAccountLogValue("status", details.created_account.status);
     return `Created ${role} account with ${status} status.`;
+  }
+
+  if (details.deleted_account) {
+    return "Deleted deactivated account with no connected entries.";
   }
 
   return "Account record was updated.";
@@ -334,6 +344,8 @@ function AccountActivityLogsButton({
 
 export default function ManageAccounts({
   accounts: accountsProp = [],
+  entries = [],
+  onDeleteAccount,
   onUpdateAccount,
   onShowToast,
 }) {
@@ -344,6 +356,8 @@ export default function ManageAccounts({
   const [editForm, setEditForm] = useState(EMPTY_EDIT_FORM);
   const [editErrors, setEditErrors] = useState({});
   const [deactivateTarget, setDeactivateTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const [accounts, setAccounts] = useState(accountsProp);
   const [accountLogs, setAccountLogs] = useState([]);
@@ -354,6 +368,24 @@ export default function ManageAccounts({
   useEffect(() => {
     setAccounts(accountsProp);
   }, [accountsProp]);
+
+  const connectedEntryCountsByAccountId = useMemo(() => {
+    return entries.reduce((acc, entry) => {
+      const connectedIds = new Set(
+        [entry.ownerId, entry.reviewerId].filter(Boolean),
+      );
+
+      connectedIds.forEach((id) => {
+        acc[id] = (acc[id] || 0) + 1;
+      });
+
+      return acc;
+    }, {});
+  }, [entries]);
+
+  const deleteTargetConnectedEntries = deleteTarget
+    ? connectedEntryCountsByAccountId[deleteTarget.id] || 0
+    : 0;
 
   const loadAccountLogs = useCallback(async ({ showErrorToast = true } = {}) => {
     setLoadingLogs(true);
@@ -602,6 +634,56 @@ export default function ManageAccounts({
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (!deleteTarget) return;
+
+    if (deleteTarget.status !== "deactivated") {
+      onShowToast?.({
+        title: "Account must be deactivated first",
+        description: "Only deactivated accounts can be deleted.",
+        type: "error",
+      });
+      return;
+    }
+
+    if (deleteTargetConnectedEntries > 0) {
+      onShowToast?.({
+        title: "Account still has connected entries",
+        description: `${deleteTarget.fullName} has ${deleteTargetConnectedEntries} connected entr${deleteTargetConnectedEntries === 1 ? "y" : "ies"}.`,
+        type: "error",
+      });
+      return;
+    }
+
+    setDeletingAccount(true);
+
+    try {
+      await usersService.delete(deleteTarget.id);
+      setAccounts((prev) => prev.filter((account) => account.id !== deleteTarget.id));
+      onDeleteAccount?.(deleteTarget.id);
+
+      if (accountLogsLoaded) {
+        await loadAccountLogs({ showErrorToast: false });
+      }
+
+      onShowToast?.({
+        title: "Account deleted",
+        description: `${deleteTarget.fullName} was permanently deleted.`,
+        type: "success",
+      });
+      setDeleteTarget(null);
+    } catch (error) {
+      console.error("Failed to delete account:", error);
+      onShowToast?.({
+        title: "Could not delete account",
+        description: error.message || "Please try again.",
+        type: "error",
+      });
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   const resetFilters = () => {
     setSearchTerm("");
     setRoleFilter("all");
@@ -696,14 +778,14 @@ export default function ManageAccounts({
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-[1050px] w-full table-fixed border-collapse text-sm">
+              <table className="min-w-[1120px] w-full table-fixed border-collapse text-sm">
                 <colgroup>
                   <col className="w-[17%]" />
                   <col className="w-[24%]" />
-                  <col className="w-[27%]" />
+                  <col className="w-[25%]" />
                   <col className="w-[14%]" />
                   <col className="w-[10%]" />
-                  <col className="w-[8%]" />
+                  <col className="w-[10%]" />
                 </colgroup>
 
                 <thead className="bg-slate-50 text-left">
@@ -730,78 +812,106 @@ export default function ManageAccounts({
                 </thead>
 
                 <tbody>
-                  {filteredAccounts.map((account) => (
-                    <tr key={account.id} className="border-b last:border-b-0">
-                      <td className="px-4 py-4 text-slate-700">
-                        <p className="truncate" title={account.username}>
-                          {account.username}
-                        </p>
-                      </td>
+                  {filteredAccounts.map((account) => {
+                    const connectedEntryCount =
+                      connectedEntryCountsByAccountId[account.id] || 0;
+                    const canDeleteAccount =
+                      account.status === "deactivated" && connectedEntryCount === 0;
 
-                      <td className="px-4 py-4">
-                        <p className="truncate font-medium text-slate-900" title={account.fullName}>
-                          {account.fullName}
-                        </p>
-                      </td>
+                    return (
+                      <tr key={account.id} className="border-b last:border-b-0">
+                        <td className="px-4 py-4 text-slate-700">
+                          <p className="truncate" title={account.username}>
+                            {account.username}
+                          </p>
+                        </td>
 
-                      <td className="px-4 py-4 text-slate-700">
-                        <p className="truncate" title={account.email}>
-                          {account.email}
-                        </p>
-                      </td>
-
-                      <td className="px-4 py-4 text-center">
-                        <Badge variant="outline" className={getRoleBadgeClass(account.role)}>
-                          {account.role === "admin" ? "Admin" : "Account Officer"}
-                        </Badge>
-                      </td>
-
-                      <td className="px-4 py-4 text-center">
-                        <Badge variant={getStatusBadgeVariant(account.status)}>
-                          {account.status === "active" ? "Active" : "Deactivated"}
-                        </Badge>
-                      </td>
-
-                      <td className="px-4 py-4 align-middle">
-                        <div className="flex items-center justify-center gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={() => openEditModal(account)}
-                            title="Edit account"
-                            className="text-blue-600 hover:text-blue-700"
+                        <td className="px-4 py-4">
+                          <p
+                            className="truncate font-medium text-slate-900"
+                            title={account.fullName}
                           >
-                            <Pencil />
-                          </Button>
+                            {account.fullName}
+                          </p>
+                        </td>
 
-                          {account.status === "active" ? (
+                        <td className="px-4 py-4 text-slate-700">
+                          <p className="truncate" title={account.email}>
+                            {account.email}
+                          </p>
+                        </td>
+
+                        <td className="px-4 py-4 text-center">
+                          <Badge variant="outline" className={getRoleBadgeClass(account.role)}>
+                            {account.role === "admin" ? "Admin" : "Account Officer"}
+                          </Badge>
+                        </td>
+
+                        <td className="px-4 py-4 text-center">
+                          <Badge variant={getStatusBadgeVariant(account.status)}>
+                            {account.status === "active" ? "Active" : "Deactivated"}
+                          </Badge>
+                        </td>
+
+                        <td className="px-4 py-4 align-middle">
+                          <div className="flex items-center justify-center gap-1">
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon-sm"
-                              onClick={() => setDeactivateTarget(account)}
-                              title="Deactivate account"
-                              className="text-red-600 hover:text-red-700"
+                              onClick={() => openEditModal(account)}
+                              title="Edit account"
+                              className="text-blue-600 hover:text-blue-700"
                             >
-                              <UserX />
+                              <Pencil />
                             </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              onClick={() => handleActivate(account.id)}
-                              title="Activate account"
-                              className="text-green-600 hover:text-green-700"
-                            >
-                              <RotateCcw />
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+
+                            {account.status === "active" ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                onClick={() => setDeactivateTarget(account)}
+                                title="Deactivate account"
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <UserX />
+                              </Button>
+                            ) : (
+                              <>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => handleActivate(account.id)}
+                                  title="Activate account"
+                                  className="text-green-600 hover:text-green-700"
+                                >
+                                  <RotateCcw />
+                                </Button>
+
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => setDeleteTarget(account)}
+                                  disabled={!canDeleteAccount}
+                                  title={
+                                    canDeleteAccount
+                                      ? "Delete account"
+                                      : `Cannot delete: ${connectedEntryCount} connected entr${connectedEntryCount === 1 ? "y" : "ies"}`
+                                  }
+                                  className="text-rose-600 hover:text-rose-700"
+                                >
+                                  <Trash2 />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -824,6 +934,62 @@ export default function ManageAccounts({
         user={deactivateTarget}
         onConfirm={handleDeactivate}
       />
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Delete Account</DialogTitle>
+            <DialogDescription>
+              This permanently removes the account after it has been deactivated and confirmed to
+              have no connected entries.
+            </DialogDescription>
+          </DialogHeader>
+
+          {deleteTarget ? (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                <p className="font-medium text-slate-900">{deleteTarget.fullName}</p>
+                <p className="mt-1 text-slate-600">{deleteTarget.username}</p>
+                <p className="mt-1 text-slate-500">{deleteTarget.email}</p>
+              </div>
+
+              {deleteTargetConnectedEntries > 0 ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  {`This account still has ${deleteTargetConnectedEntries} connected entr${
+                    deleteTargetConnectedEntries === 1 ? "y" : "ies"
+                  }, so deletion is locked.`}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                  This action cannot be undone.
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deletingAccount}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDeleteAccount}
+              disabled={deletingAccount || deleteTargetConnectedEntries > 0}
+            >
+              {deletingAccount ? "Deleting..." : "Delete Account"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

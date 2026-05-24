@@ -50,6 +50,7 @@ function matchesSearch(targets, query) {
 export default function AdminUnitRecordsModal({
   entries = [],
   onClose,
+  planningYear,
   totalApproved = 0,
   unit,
 }) {
@@ -64,6 +65,7 @@ export default function AdminUnitRecordsModal({
         [
           entry.titleOfActivities,
           entry.no,
+          entry.planningYear,
           formatDate(entry.submittedAt),
           getPersonName(entry, "owner"),
           getPersonName(entry, "reviewer"),
@@ -91,9 +93,11 @@ export default function AdminUnitRecordsModal({
               <History className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-xl font-semibold text-white">{unit} Approved Entries</h3>
+              <h3 className="text-xl font-semibold text-white">
+                {unit} Approved Entries {planningYear ? `- ${planningYear}` : ""}
+              </h3>
               <p className="mt-1 text-sm text-white/75">
-                Entries currently included in this unit's approved AWPB plan.
+                Entries currently included in this unit's approved AWPB plan for this year.
               </p>
             </div>
           </div>

@@ -95,6 +95,7 @@ function matchesSearch(targets, query) {
 export default function AdminBudgetRecordsModal({
   approvedEntries = [],
   onClose,
+  planningYear,
   transactions = [],
 }) {
   const [activeTab, setActiveTab] = useState("movements");
@@ -118,6 +119,7 @@ export default function AdminBudgetRecordsModal({
           tx.type,
           getTransactionDisplay(tx).label,
           tx.unit,
+          tx.planning_year,
           getTransactionActorName(tx),
           formatRecordDateTime(tx.created_at),
           Number(tx.amount).toLocaleString(),
@@ -246,9 +248,11 @@ export default function AdminBudgetRecordsModal({
               <History className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-xl font-semibold text-white">Planning Budget Records</h3>
+              <h3 className="text-xl font-semibold text-white">
+                Planning Budget Records {planningYear ? `- ${planningYear}` : ""}
+              </h3>
               <p className="mt-1 text-sm text-white/80">
-                Track estimate edits, approvals, and current approved AWPB entries.
+                Track estimate edits, approvals, and current approved AWPB entries for this year.
               </p>
             </div>
           </div>

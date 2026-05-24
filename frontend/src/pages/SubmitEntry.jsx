@@ -469,33 +469,6 @@ export default function SubmitEntry({
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setUnitPlanningStatsStatus("loading");
-      try {
-        const rows = await budgetPlanningService.getUnitStats();
-        if (!cancelled) {
-          setUnitPlanningStats(
-            Object.fromEntries(
-              rows.map((row) => [row.unit, { ...row, hasLiveStats: true }]),
-            ),
-          );
-          setUnitPlanningStatsStatus("ready");
-        }
-      } catch (err) {
-        console.error("Failed to load unit planning stats:", err);
-        if (!cancelled) {
-          setUnitPlanningStats({});
-          setUnitPlanningStatsStatus("unavailable");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // Prefer Supabase data when available; otherwise use the JSON prop.
   const templateData = supabaseTemplateData || templateDataProp;
 
@@ -555,6 +528,33 @@ export default function SubmitEntry({
     control,
     name: "targets",
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setUnitPlanningStatsStatus("loading");
+      try {
+        const rows = await budgetPlanningService.getUnitStats(planningYear);
+        if (!cancelled) {
+          setUnitPlanningStats(
+            Object.fromEntries(
+              rows.map((row) => [row.unit, { ...row, hasLiveStats: true }]),
+            ),
+          );
+          setUnitPlanningStatsStatus("ready");
+        }
+      } catch (err) {
+        console.error("Failed to load unit planning stats:", err);
+        if (!cancelled) {
+          setUnitPlanningStats({});
+          setUnitPlanningStatsStatus("unavailable");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [planningYear]);
 
   const draftValues = useWatch({
     control,
@@ -1665,7 +1665,7 @@ export default function SubmitEntry({
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h3 className="text-base font-semibold text-white">
-                        {normalizeUnitCode(unit)} Planning Snapshot
+                        {normalizeUnitCode(unit)} Planning Snapshot ({planningYear})
                       </h3>
                       <p className="mt-1 text-sm text-white/85">
                         Estimates guide the AWPB plan; submissions may exceed them.
@@ -1687,7 +1687,7 @@ export default function SubmitEntry({
 
                   <div className="mt-4 rounded-2xl bg-white/18 px-4 py-3 shadow-inner shadow-white/5">
                     <p className="text-xs font-semibold uppercase text-white/70">
-                      Unit Planning Estimate
+                      {planningYear} Unit Planning Estimate
                     </p>
                     <p className="mt-1 text-3xl font-bold leading-tight text-white">
                       {planningEstimateLabel}

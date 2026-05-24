@@ -80,9 +80,9 @@ export const csvExportService = {
    * Fetch all approved entries from the database
    * @returns {Promise<Array>} Array of approved entries with full data
    */
-  async fetchApprovedEntries() {
+  async fetchApprovedEntries(planningYear) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('entries')
         .select(`
           *,
@@ -95,6 +95,12 @@ export const csvExportService = {
         `)
         .eq('status', 'Approved')
         .order('created_at', { ascending: false });
+
+      if (planningYear) {
+        query = query.eq('planning_year', Number(planningYear));
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('Error fetching approved entries:', error);
@@ -147,6 +153,7 @@ export const csvExportService = {
             '',
           subActivity: row.sub_activities?.name || '',
           titleOfActivities: row.title_of_activities,
+          planningYear: row.planning_year,
           monthlyBreakdown,
           grandTotal,
         };
@@ -175,6 +182,7 @@ export const csvExportService = {
    */
   transformEntriesForCSV(entries) {
     return entries.map(entry => ({
+      'Planning Year': entry.planningYear,
       'Unit': entry.unit,
       'Component': entry.component,
       'Sub Component': entry.subComponent,
@@ -280,6 +288,7 @@ export const csvExportService = {
     });
 
     const totalsRow = {
+      'Planning Year': '',
       'Unit': 'TOTAL',
       'Component': '',
       'Sub Component': '',
@@ -325,10 +334,11 @@ export const csvExportService = {
    * Generate filename with timestamp
    * @returns {string} Filename for the CSV export
    */
-  generateFilename() {
+  generateFilename(planningYear) {
     const now = new Date();
     const timestamp = now.toISOString().split('T')[0]; // YYYY-MM-DD format
-    return `approved_entries_export_${timestamp}.csv`;
+    const yearPart = planningYear ? `${planningYear}_` : '';
+    return `approved_entries_export_${yearPart}${timestamp}.csv`;
   },
 
   generateYearlyBackupFilename(year) {
@@ -362,13 +372,17 @@ export const csvExportService = {
    * Main export function - fetches approved entries and exports to CSV
    * @returns {Promise<{filename: string, recordCount: number}>} Export result info
    */
-  async exportApprovedEntriesToCSV() {
+  async exportApprovedEntriesToCSV(planningYear) {
     try {
       // Fetch approved entries
-      const entries = await this.fetchApprovedEntries();
+      const entries = await this.fetchApprovedEntries(planningYear);
 
       if (!entries || entries.length === 0) {
-        throw new Error('No approved entries found to export');
+        throw new Error(
+          planningYear
+            ? `No approved entries found to export for ${planningYear}`
+            : 'No approved entries found to export',
+        );
       }
 
       // Transform data for CSV
@@ -382,7 +396,7 @@ export const csvExportService = {
       const csvContent = this.convertToCSV(csvData);
 
       // Generate filename
-      const filename = this.generateFilename();
+      const filename = this.generateFilename(planningYear);
 
       // Trigger download
       this.downloadCSV(csvContent, filename);

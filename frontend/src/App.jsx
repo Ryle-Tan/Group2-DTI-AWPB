@@ -816,6 +816,10 @@ async function loadTemplate() {
     );
   };
 
+  const handleDeleteAccount = (accountId) => {
+    setAccounts((prev) => prev.filter((account) => account.id !== accountId));
+  };
+
   const handleLogin = (user) => {
     setLoginNotice("");
     startSessionExpiration();
@@ -986,7 +990,7 @@ async function loadTemplate() {
           <Route path="/admin/dashboard" element={canUseAdminView ? <AdminDashboard entries={entries} submissionWindow={submissionWindow} onUpdateSubmissionWindow={handleUpdateSubmissionWindow} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/archive-cleanup" element={canUseAdminView ? <ArchiveCleanup entries={entries} onCleanupYear={handleCleanupYear} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/review" element={canUseAdminView ? <AdminReview entries={entries} currentUser={authUser} onReplaceEntry={handleReplaceEntry} onRemoveEntry={handleRemoveEntry} onUpdateEntry={handleUpdateEntry} onDeleteEntry={handleDeleteEntry} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
-          <Route path="/admin/manage-accounts" element={canUseAdminView ? <ManageAccounts accounts={accounts} onUpdateAccount={handleUpdateAccount} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
+          <Route path="/admin/manage-accounts" element={canUseAdminView ? <ManageAccounts accounts={accounts} entries={entries} onUpdateAccount={handleUpdateAccount} onDeleteAccount={handleDeleteAccount} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="/admin/manage-accounts/new" element={canUseAdminView ? <AddNewAccount accounts={accounts} onAddAccount={handleAddAccount} onShowToast={showToast} /> : <Navigate to={defaultAuthenticatedPath} replace />} />
           <Route path="*" element={<Navigate to={defaultAuthenticatedPath} replace />} />
         </Routes>

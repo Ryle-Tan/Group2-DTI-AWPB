@@ -310,23 +310,21 @@ export const usersService = {
   },
 
   async delete(userId) {
-    // Browser clients cannot safely call Supabase admin auth APIs. Treat
-    // account removal as deactivation so RLS blocks future app/data access.
-    const { data: currentProfile, error: fetchError } = await supabase
-      .from('profiles')
-      .select('username, full_name, email, role')
-      .eq('id', userId)
-      .single();
+    const { data, error } = await supabase
+      .rpc('admin_delete_user_account', {
+        p_user_id: userId,
+      });
 
-    if (fetchError) throw fetchError;
+    if (error) {
+      if (error.message?.includes('admin_delete_user_account')) {
+        throw new Error(
+          'The database account-deletion migration has not been applied yet. Please apply supabase/migrations/028_admin_delete_user_account.sql, then try again.',
+        );
+      }
+      throw error;
+    }
 
-    return this.updateAccount(userId, {
-      username: currentProfile.username,
-      fullName: currentProfile.full_name,
-      email: currentProfile.email,
-      role: currentProfile.role,
-      status: 'deactivated',
-    });
+    return data;
   }
 };
 
@@ -722,8 +720,11 @@ export const entriesService = {
 };
 
 export const budgetPlanningService = {
-  async getUnitStats() {
-    const { data, error } = await supabase.rpc('get_unit_planning_budget_stats');
+  async getUnitStats(planningYear) {
+    const rpcArgs = planningYear
+      ? { p_planning_year: Number(planningYear) }
+      : {};
+    const { data, error } = await supabase.rpc('get_unit_planning_budget_stats', rpcArgs);
     if (error) throw error;
 
     return (data || []).map((row) => ({
