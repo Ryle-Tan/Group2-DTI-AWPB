@@ -109,6 +109,10 @@ function normalizeText(value) {
   return String(value ?? '').trim();
 }
 
+function getTemplatePrefix(value) {
+  return String(value || '').match(/\b\d+(?:\.\d+)+/)?.[0] || '';
+}
+
 function normalizeEntryStatus(value, fallback = 'Pending Review') {
   const statusKey = normalizeText(value).toLowerCase();
   return IMPORTABLE_STATUS_MAP.get(statusKey) || fallback;
@@ -137,6 +141,10 @@ function normalizeDuplicateText(value) {
 function normalizeDuplicateNumber(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed.toFixed(4) : '0.0000';
+}
+
+function normalizeDuplicateClassification(value) {
+  return getTemplatePrefix(value) || normalizeDuplicateText(value);
 }
 
 function parseCSVRows(csvContent) {
@@ -381,16 +389,16 @@ function buildDuplicateKey(entry) {
   return JSON.stringify([
     normalizeDuplicateText(entry.planningYear || entry.planning_year),
     normalizeUnitCode(entry.unit || entry.units?.code || entry.units?.name || ''),
-    normalizeDuplicateText(entry.component || entry.components?.name),
-    normalizeDuplicateText(entry.subComponent || entry.sub_components?.name),
-    normalizeDuplicateText(entry.keyActivity || entry.key_activities?.name),
+    normalizeDuplicateClassification(entry.component || entry.components?.name),
+    normalizeDuplicateClassification(entry.subComponent || entry.sub_components?.name),
+    normalizeDuplicateClassification(entry.keyActivity || entry.key_activities?.name),
     normalizeDuplicateText(entry.no || entry.activity_no),
     normalizeDuplicateText(
       entry.performanceIndicator ||
         entry.performance_indicator ||
         entry.key_activities?.performance_indicator,
     ),
-    normalizeDuplicateText(entry.subActivity || entry.sub_activities?.name),
+    normalizeDuplicateClassification(entry.subActivity || entry.sub_activities?.name),
     normalizeDuplicateText(entry.titleOfActivities || entry.title_of_activities),
     normalizeDuplicateNumber(entry.unitCost ?? entry.unit_cost ?? 0),
     ...monthlyTargets,
@@ -579,11 +587,6 @@ export const csvExportService = {
       'Sub Activity': entry.subActivity,
       'Title of Activities': entry.titleOfActivities,
       'Unit Cost': entry.unitCost,
-      ...MONTHS_LIST.reduce((acc, monthKey) => {
-        const monthName = this.getMonthName(monthKey);
-        acc[`${monthName} Target`] = entry.monthlyTargets?.[monthName] ?? 0;
-        return acc;
-      }, {}),
       ...entry.monthlyBreakdown,
       'Grand Total': entry.grandTotal,
     }));
@@ -615,14 +618,6 @@ export const csvExportService = {
         'Sub Activity': entry.subActivity || '',
         'Title of Activities': entry.titleOfActivities || '',
         'Unit Cost': Number(entry.unitCost || 0),
-        ...MONTHS_LIST.reduce((acc, monthKey) => {
-          const monthName = this.getMonthName(monthKey);
-          const breakdown = getEntryMonthBreakdown(entry, monthKey);
-
-          acc[`${monthName} Target`] = Number(breakdown.target || 0);
-
-          return acc;
-        }, {}),
         ...monthlyColumns,
         'Grand Total': Number(entry.grandTotal || 0),
       };
@@ -677,17 +672,10 @@ export const csvExportService = {
   },
 
   calculateTotalsRow(entries) {
-    const monthlyTargetTotals = {};
     const monthlyTotals = {};
     let totalGrandTotal = 0;
 
     entries.forEach(entry => {
-      Object.keys(entry.monthlyTargets || {}).forEach(month => {
-        if (!monthlyTargetTotals[month]) {
-          monthlyTargetTotals[month] = 0;
-        }
-        monthlyTargetTotals[month] += Number(entry.monthlyTargets[month] || 0);
-      });
       Object.keys(entry.monthlyBreakdown).forEach(month => {
         if (!monthlyTotals[month]) {
           monthlyTotals[month] = 0;
@@ -709,11 +697,6 @@ export const csvExportService = {
       'Sub Activity': '',
       'Title of Activities': '',
       'Unit Cost': '',
-      ...MONTHS_LIST.reduce((acc, monthKey) => {
-        const monthName = this.getMonthName(monthKey);
-        acc[`${monthName} Target`] = monthlyTargetTotals[monthName] || 0;
-        return acc;
-      }, {}),
       ...monthlyTotals,
       'Grand Total': totalGrandTotal,
     };
