@@ -230,18 +230,6 @@ export const autoExcelWorkbookService = {
                 { header: 'Sub Activity', key: 'subActivity' },
                 { header: 'Title of Activities', key: 'titleOfActivities' },
                 { header: 'Unit Cost', key: 'unitCost' },
-                { header: 'January Target', key: 'janTarget' },
-                { header: 'February Target', key: 'febTarget' },
-                { header: 'March Target', key: 'marTarget' },
-                { header: 'April Target', key: 'aprTarget' },
-                { header: 'May Target', key: 'mayTarget' },
-                { header: 'June Target', key: 'junTarget' },
-                { header: 'July Target', key: 'julTarget' },
-                { header: 'August Target', key: 'augTarget' },
-                { header: 'September Target', key: 'sepTarget' },
-                { header: 'October Target', key: 'octTarget' },
-                { header: 'November Target', key: 'novTarget' },
-                { header: 'December Target', key: 'decTarget' },
                 { header: 'January', key: 'jan' },
                 { header: 'February', key: 'feb' },
                 { header: 'March', key: 'mar' },
@@ -260,7 +248,6 @@ export const autoExcelWorkbookService = {
 
             // Populate rows with real data types
             entries.forEach(entry => {
-                const monthTargets = Object.values(entry.monthlyTargets || {});
                 const monthBreakdowns = Object.values(entry.monthlyBreakdown || {});
 
                 wsData.addRow({
@@ -275,12 +262,6 @@ export const autoExcelWorkbookService = {
                     subActivity: entry.subActivity,
                     titleOfActivities: entry.titleOfActivities,
                     unitCost: entry.unitCost,
-
-                    // Map targets array cleanly
-                    janTarget: monthTargets[0] || 0, febTarget: monthTargets[1] || 0, marTarget: monthTargets[2] || 0,
-                    aprTarget: monthTargets[3] || 0, mayTarget: monthTargets[4] || 0, junTarget: monthTargets[5] || 0,
-                    julTarget: monthTargets[6] || 0, augTarget: monthTargets[7] || 0, sepTarget: monthTargets[8] || 0,
-                    octTarget: monthTargets[9] || 0, novTarget: monthTargets[10] || 0, decTarget: monthTargets[11] || 0,
 
                     // Map values financial breakdown array cleanly
                     jan: monthBreakdowns[0] || 0, feb: monthBreakdowns[1] || 0, mar: monthBreakdowns[2] || 0,
