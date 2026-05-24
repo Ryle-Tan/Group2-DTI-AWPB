@@ -76,7 +76,20 @@ function normalizeMonthKey(value) {
 }
 
 function getEntryMonthBreakdown(entry, monthKey) {
-  const monthlyRows = Array.isArray(entry.monthlyBreakdown)
+  if (entry?.monthlyBreakdown && !Array.isArray(entry.monthlyBreakdown)) {
+    const monthName = MONTH_NAMES[monthKey];
+    const amount = entry.monthlyBreakdown[monthName] ?? entry.monthlyBreakdown[monthKey];
+    const target =
+      entry.monthlyTargets?.[monthName] ??
+      entry.monthlyTargets?.[monthKey] ??
+      entry.monthly_targets?.[monthName] ??
+      entry.monthly_targets?.[monthKey] ??
+      0;
+
+    return { month: monthName, target, amount };
+  }
+
+  const monthlyRows = Array.isArray(entry?.monthlyBreakdown)
     ? entry.monthlyBreakdown
     : [];
 
@@ -109,6 +122,10 @@ function normalizeText(value) {
   return String(value ?? '').trim();
 }
 
+function getTemplatePrefix(value) {
+  return String(value || '').match(/\b\d+(?:\.\d+)+/)?.[0] || '';
+}
+
 function normalizeEntryStatus(value, fallback = 'Pending Review') {
   const statusKey = normalizeText(value).toLowerCase();
   return IMPORTABLE_STATUS_MAP.get(statusKey) || fallback;
@@ -134,9 +151,17 @@ function normalizeDuplicateText(value) {
   return normalizeText(value).replace(/\s+/g, ' ').toLowerCase();
 }
 
-function normalizeDuplicateNumber(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed.toFixed(4) : '0.0000';
+function normalizeDuplicateMoney(value) {
+  const parsed = parseNumber(value);
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : '0.00';
+}
+
+function normalizeDuplicateClassification(value) {
+  return getTemplatePrefix(value) || normalizeDuplicateText(value);
+}
+
+function getEntryIdForDuplicateCheck(entry) {
+  return normalizeText(entry?.sourceEntryId || entry?.entryId || entry?.entry_id || entry?.id);
 }
 
 function parseCSVRows(csvContent) {
@@ -328,6 +353,7 @@ function transformImportedRowsToEntries(rows, fallbackStatus = 'Pending Review')
 
     return {
       sourceRowNumber: row.__rowNumber,
+      sourceEntryId: normalizeText(getCell(row, ['Entry ID', 'Entry Id', 'ID'])),
       planningYear:
         normalizeText(getCell(row, ['Planning Year', 'Archive Year'])) ||
         String(new Date().getFullYear()),
@@ -372,29 +398,124 @@ function validateImportedEntries(entries) {
   return errors;
 }
 
-function buildDuplicateKey(entry) {
-  const monthlyTargets = MONTHS_LIST.map((monthKey) => {
+function buildDuplicateParts(entry) {
+  const monthlyAmounts = MONTHS_LIST.map((monthKey) => {
     const breakdown = getEntryMonthBreakdown(entry, monthKey);
-    return normalizeDuplicateNumber(breakdown.target || 0);
+    return normalizeDuplicateMoney(breakdown.amount || 0);
   });
 
-  return JSON.stringify([
-    normalizeDuplicateText(entry.planningYear || entry.planning_year),
-    normalizeUnitCode(entry.unit || entry.units?.code || entry.units?.name || ''),
-    normalizeDuplicateText(entry.component || entry.components?.name),
-    normalizeDuplicateText(entry.subComponent || entry.sub_components?.name),
-    normalizeDuplicateText(entry.keyActivity || entry.key_activities?.name),
-    normalizeDuplicateText(entry.no || entry.activity_no),
-    normalizeDuplicateText(
+  return {
+    planningYear: normalizeDuplicateText(entry.planningYear || entry.planning_year),
+    unit: normalizeUnitCode(entry.unit || entry.units?.code || entry.units?.name || ''),
+    component: normalizeDuplicateClassification(entry.component || entry.components?.name),
+    subComponent: normalizeDuplicateClassification(entry.subComponent || entry.sub_components?.name),
+    keyActivity: normalizeDuplicateClassification(entry.keyActivity || entry.key_activities?.name),
+    no: normalizeDuplicateText(entry.no || entry.activity_no),
+    performanceIndicator: normalizeDuplicateText(
       entry.performanceIndicator ||
         entry.performance_indicator ||
         entry.key_activities?.performance_indicator,
     ),
-    normalizeDuplicateText(entry.subActivity || entry.sub_activities?.name),
-    normalizeDuplicateText(entry.titleOfActivities || entry.title_of_activities),
-    normalizeDuplicateNumber(entry.unitCost ?? entry.unit_cost ?? 0),
-    ...monthlyTargets,
-  ]);
+    subActivity: normalizeDuplicateClassification(entry.subActivity || entry.sub_activities?.name),
+    title: normalizeDuplicateText(entry.titleOfActivities || entry.title_of_activities),
+    unitCost: normalizeDuplicateMoney(entry.unitCost ?? entry.unit_cost ?? 0),
+    monthlyAmounts,
+  };
+}
+
+function buildDuplicateFingerprints(entry) {
+  const parts = buildDuplicateParts(entry);
+  const fingerprints = new Set();
+
+  fingerprints.add(JSON.stringify([
+    'activity',
+    parts.planningYear,
+    parts.unit,
+    parts.component,
+    parts.subComponent,
+    parts.keyActivity,
+    parts.subActivity,
+    parts.title,
+  ]));
+
+  fingerprints.add(JSON.stringify([
+    'indicator',
+    parts.planningYear,
+    parts.unit,
+    parts.component,
+    parts.subComponent,
+    parts.keyActivity,
+    parts.no,
+    parts.performanceIndicator,
+    parts.subActivity,
+    parts.title,
+  ]));
+
+  fingerprints.add(JSON.stringify([
+    'budget',
+    parts.planningYear,
+    parts.unit,
+    parts.component,
+    parts.subComponent,
+    parts.keyActivity,
+    parts.no,
+    parts.performanceIndicator,
+    parts.subActivity,
+    parts.title,
+    parts.unitCost,
+    ...parts.monthlyAmounts,
+  ]));
+
+  if (parts.keyActivity && parts.title) {
+    fingerprints.add(JSON.stringify([
+      'key-title',
+      parts.planningYear,
+      parts.unit,
+      parts.keyActivity,
+      parts.subActivity,
+      parts.title,
+    ]));
+  }
+
+  return [...fingerprints];
+}
+
+function addDuplicateFingerprints(entry, fingerprintSet, idSet) {
+  const entryId = getEntryIdForDuplicateCheck(entry);
+  if (entryId) idSet.add(entryId);
+  buildDuplicateFingerprints(entry).forEach((fingerprint) => fingerprintSet.add(fingerprint));
+}
+
+function hasDuplicateFingerprint(entry, fingerprintSet, idSet) {
+  const entryId = getEntryIdForDuplicateCheck(entry);
+  if (entryId && idSet.has(entryId)) return true;
+  return buildDuplicateFingerprints(entry).some((fingerprint) => fingerprintSet.has(fingerprint));
+}
+
+function removeDuplicateFingerprints(entry, fingerprintSet, idSet) {
+  const entryId = getEntryIdForDuplicateCheck(entry);
+  if (entryId) idSet.delete(entryId);
+  buildDuplicateFingerprints(entry).forEach((fingerprint) => fingerprintSet.delete(fingerprint));
+}
+
+async function fetchLatestEntriesForDuplicateCheck(existingEntries = []) {
+  try {
+    const latestEntries = await entriesService.getAll();
+    const entriesById = new Map();
+    let fallbackIndex = 0;
+
+    [...(existingEntries || []), ...(latestEntries || [])].forEach((entry) => {
+      if (!entry) return;
+      const key = entry?.id || `entry-without-id-${fallbackIndex}`;
+      entriesById.set(key, entry);
+      fallbackIndex += 1;
+    });
+
+    return [...entriesById.values()];
+  } catch (error) {
+    console.warn('Could not refresh entries before CSV import duplicate check:', error);
+    return existingEntries || [];
+  }
 }
 
 function isApprovedStatus(status) {
@@ -561,45 +682,27 @@ export const csvExportService = {
     return MONTH_NAMES[monthCode?.toLowerCase()] || monthCode;
   },
 
-  formatCurrency(amount) {
-    return new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount || 0);
-  },
-
   /**
    * Transform entry data into CSV-compatible format
    * @param {Array} entries - Array of entry objects
    * @returns {Array} Array of flattened entry objects for CSV
    */
   transformEntriesForCSV(entries) {
-    return entries.map(entry => {
-      const formattedMonthlyBreakdown = {};
-      Object.keys(entry.monthlyBreakdown || {}).forEach(monthKey => {
-        formattedMonthlyBreakdown[monthKey] = this.formatCurrency(entry.monthlyBreakdown[monthKey]);
-      });
-      return {
-        'Planning Year': entry.planningYear,
-        'Status': formatStatusForCSV(entry.status || 'Approved'),
-        'Unit': entry.unit,
-        'Component': entry.component,
-        'Sub Component': entry.subComponent,
-        'Key Activity': entry.keyActivity,
-        'Activity No.': entry.no,
-        'Performance Indicator': entry.performanceIndicator,
-        'Sub Activity': entry.subActivity,
-        'Title of Activities': entry.titleOfActivities,
-        'Unit Cost': this.formatCurrency(entry.unitCost),
-        ...MONTHS_LIST.reduce((acc, monthKey) => {
-          const monthName = this.getMonthName(monthKey);
-          acc[`${monthName} Target`] = entry.monthlyTargets?.[monthName] ?? 0;
-          return acc;
-        }, {}),
-        ...formattedMonthlyBreakdown,
-        'Grand Total': this.formatCurrency(entry.grandTotal),
-      }
-    });
+    return entries.map(entry => ({
+      'Planning Year': entry.planningYear,
+      'Status': formatStatusForCSV(entry.status || 'Approved'),
+      'Unit': entry.unit,
+      'Component': entry.component,
+      'Sub Component': entry.subComponent,
+      'Key Activity': entry.keyActivity,
+      'Activity No.': entry.no,
+      'Performance Indicator': entry.performanceIndicator,
+      'Sub Activity': entry.subActivity,
+      'Title of Activities': entry.titleOfActivities,
+      'Unit Cost': entry.unitCost,
+      ...entry.monthlyBreakdown,
+      'Grand Total': entry.grandTotal,
+    }));
   },
 
   transformEntriesForYearlyBackup(entries, year) {
@@ -628,14 +731,6 @@ export const csvExportService = {
         'Sub Activity': entry.subActivity || '',
         'Title of Activities': entry.titleOfActivities || '',
         'Unit Cost': Number(entry.unitCost || 0),
-        ...MONTHS_LIST.reduce((acc, monthKey) => {
-          const monthName = this.getMonthName(monthKey);
-          const breakdown = getEntryMonthBreakdown(entry, monthKey);
-
-          acc[`${monthName} Target`] = Number(breakdown.target || 0);
-
-          return acc;
-        }, {}),
         ...monthlyColumns,
         'Grand Total': Number(entry.grandTotal || 0),
       };
@@ -690,32 +785,18 @@ export const csvExportService = {
   },
 
   calculateTotalsRow(entries) {
-    const monthlyTargetTotals = {};
     const monthlyTotals = {};
     const formattedMonthlyTotals = {};
 
     let totalGrandTotal = 0;
 
     entries.forEach(entry => {
-      Object.keys(entry.monthlyTargets || {}).forEach(month => {
-        if (!monthlyTargetTotals[month]) {
-          monthlyTargetTotals[month] = 0;
-        }
-        monthlyTargetTotals[month] += Number(entry.monthlyTargets[month] || 0);
-      });
-
       Object.keys(entry.monthlyBreakdown).forEach(month => {
         if (!monthlyTotals[month]) {
           monthlyTotals[month] = 0;
         }
         monthlyTotals[month] += entry.monthlyBreakdown[month];
       });
-
-      const formattedMonthlyTotals = {};
-      Object.keys(monthlyTotals).forEach(month => {
-        formattedMonthlyTotals[this.getMonthName(month)] = this.formatCurrency(monthlyTotals[month]);
-      });
-
       totalGrandTotal += entry.grandTotal;
     });
 
@@ -735,11 +816,6 @@ export const csvExportService = {
       'Sub Activity': '',
       'Title of Activities': '',
       'Unit Cost': '',
-      ...MONTHS_LIST.reduce((acc, monthKey) => {
-        const monthName = this.getMonthName(monthKey);
-        acc[`${monthName} Target`] = monthlyTargetTotals[monthName] || 0;
-        return acc;
-      }, {}),
       ...formattedMonthlyTotals,
       'Grand Total': this.formatCurrency(totalGrandTotal),
     };
@@ -854,7 +930,7 @@ export const csvExportService = {
     }
   },
 
-  exportYearlyEntriesBackupToCSV(entries, year) {
+  createYearlyEntriesBackup(entries, year) {
     const archiveEntries = (entries || []).filter(
       (entry) => String(entry.planningYear || '') === String(year),
     );
@@ -866,11 +942,21 @@ export const csvExportService = {
     const csvContent = this.convertYearlyBackupToCSV(archiveEntries, year);
     const filename = this.generateYearlyBackupFilename(year);
 
-    this.downloadCSV(csvContent, filename);
-
     return {
+      csvContent,
       filename,
       recordCount: archiveEntries.length,
+    };
+  },
+
+  exportYearlyEntriesBackupToCSV(entries, year) {
+    const backup = this.createYearlyEntriesBackup(entries, year);
+
+    this.downloadCSV(backup.csvContent, backup.filename);
+
+    return {
+      filename: backup.filename,
+      recordCount: backup.recordCount,
     };
   }
 };
@@ -899,14 +985,16 @@ export const csvImportService = {
     const createdEntries = [];
     const failedRows = [];
     const skippedRows = [];
-    const duplicateKeys = new Set(
-      (existingEntries || []).map((entry) => buildDuplicateKey(entry)),
-    );
+    const currentEntries = await fetchLatestEntriesForDuplicateCheck(existingEntries);
+    const duplicateFingerprints = new Set();
+    const duplicateEntryIds = new Set();
+
+    currentEntries.forEach((entry) => {
+      addDuplicateFingerprints(entry, duplicateFingerprints, duplicateEntryIds);
+    });
 
     for (const entry of importedEntries) {
-      const duplicateKey = buildDuplicateKey(entry);
-
-      if (duplicateKeys.has(duplicateKey)) {
+      if (hasDuplicateFingerprint(entry, duplicateFingerprints, duplicateEntryIds)) {
         skippedRows.push({
           rowNumber: entry.sourceRowNumber,
           message: 'Duplicate entry skipped.',
@@ -914,14 +1002,17 @@ export const csvImportService = {
         continue;
       }
 
-      duplicateKeys.add(duplicateKey);
+      addDuplicateFingerprints(entry, duplicateFingerprints, duplicateEntryIds);
 
       try {
         const entryData = { ...entry };
         delete entryData.sourceRowNumber;
+        delete entryData.sourceEntryId;
         const createdEntry = await createImportedEntry(entryData);
         createdEntries.push(createdEntry);
+        addDuplicateFingerprints(createdEntry, duplicateFingerprints, duplicateEntryIds);
       } catch (error) {
+        removeDuplicateFingerprints(entry, duplicateFingerprints, duplicateEntryIds);
         failedRows.push({
           rowNumber: entry.sourceRowNumber,
           message: error.message || 'Import failed.',
